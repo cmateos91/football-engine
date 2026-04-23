@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "football-motor"
+version = "0.1.0"
+description = "Motor de simulacion de partidos de futbol con foco en realismo estadistico"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "PyMySQL>=1.1,<2",
+  "SQLAlchemy>=2.0,<3",
+  "python-dotenv>=1.0,<2",
+]
+
+[project.optional-dependencies]
+analisis = [
+  "numpy>=2.2,<3",
+  "pandas>=2.2,<3",
+  "scipy>=1.15,<2",
+]
+dev = [
+  "hypothesis>=6.135,<7",
+  "mypy>=1.15,<2",
+  "pytest>=8.3,<9",
+  "ruff>=0.11,<0.12",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+  "B",
+  "C4",
+  "E",
+  "F",
+  "I",
+  "N",
+  "PT",
+  "RUF",
+  "SIM",
+  "UP",
+]
+
+[tool.ruff.format]
+indent-style = "space"
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_configs = true
+pretty = true
+show_error_codes = true
+mypy_path = ["src"]
+files = ["src"]
