@@ -233,9 +233,7 @@ def calibrar_parametros(
     )
 
     metricas_final = _simular_y_medir(mejor_params, equipos, n_partidos, semilla)
-    _, errores = (
-        _calcular_error(metricas_final, metas) if metricas_final else (0.0, {})
-    )
+    _, errores = _calcular_error(metricas_final, metas) if metricas_final else (0.0, {})
 
     return ResultadoCalibracion(
         parametros=mejor_params,

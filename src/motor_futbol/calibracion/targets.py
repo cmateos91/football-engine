@@ -353,8 +353,7 @@ SEASON_TARGETS: dict[str, dict[str, Any]] = {
         "severity": "MEDIUM",
         "source": "Histórico 2019-25: 19-31 goles. Media ~24",
         "note": (
-            "Alta varianza individual; el motor debe reproducir la distribución, "
-            "no el valor exacto"
+            "Alta varianza individual; el motor debe reproducir la distribución, no el valor exacto"
         ),
     },
     "total_league_goals": {

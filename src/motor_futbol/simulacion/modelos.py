@@ -106,20 +106,21 @@ class ParametrosSimulacionBaseline:
     posesiones_base: int = 180
     variacion_posesiones: int = 30
 
-    probabilidad_base_tiro: float = 0.11
+    probabilidad_base_tiro: float = 0.20
     probabilidad_base_tiro_fuera_zona: float = 0.08
     probabilidad_base_tiro_puerta: float = 0.32
 
-    probabilidad_base_gol: float = 3.20
+    probabilidad_base_gol: float = 1.95
 
-    probabilidad_base_corner: float = 0.62
-    probabilidad_centro: float = 0.40
+    probabilidad_base_corner: float = 0.42
+    probabilidad_centro: float = 0.04
 
-    probabilidad_base_falta: float = 0.10
-    probabilidad_amarilla: float = 0.07
+    probabilidad_base_falta: float = 0.06
+    probabilidad_penalti: float = 0.45
+    probabilidad_amarilla: float = 0.08
     probabilidad_roja: float = 0.001
 
-    probabilidad_contraataque: float = 0.03
+    probabilidad_contraataque: float = 0.008
 
     coste_energia_equipo_poseedor: float = 0.46
     coste_energia_equipo_defensor: float = 0.22
@@ -136,6 +137,7 @@ class ParametrosSimulacionBaseline:
             "probabilidad_base_corner",
             "probabilidad_centro",
             "probabilidad_base_falta",
+            "probabilidad_penalti",
             "probabilidad_amarilla",
             "probabilidad_roja",
             "probabilidad_contraataque",

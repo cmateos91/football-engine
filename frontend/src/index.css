@@ -1,0 +1,57 @@
+:root {
+  --bg-main: #0a0c10;
+  --bg-card: rgba(22, 27, 34, 0.7);
+  --bg-accent: rgba(48, 54, 61, 0.5);
+  --primary: #38bdf8;
+  --primary-glow: rgba(56, 189, 248, 0.3);
+  --secondary: #818cf8;
+  --text-main: #f0f6fc;
+  --text-muted: #8b949e;
+  --border: rgba(48, 54, 61, 0.8);
+  --success: #238636;
+  --danger: #da3633;
+  --font-main: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  font-family: var(--font-main);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.glass {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.glow-hover:hover {
+  box-shadow: 0 0 20px var(--primary-glow);
+  border-color: var(--primary);
+  transition: all 0.3s ease;
+}
+
+h1, h2, h3 {
+  letter-spacing: -0.02em;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+button:active {
+  transform: scale(0.95);
+}

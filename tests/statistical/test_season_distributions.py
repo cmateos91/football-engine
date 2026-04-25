@@ -21,28 +21,36 @@ from motor_futbol.calibracion import HISTORICAL_RANGES, HISTORICAL_SEASONS, SEAS
 
 def _simular_una_temporada(semilla: int = 2025):
     from motor_futbol.simulacion.temporada import simular_temporada
+    from tests.unit.fabrica_dominio import crear_equipo_con_nivel
 
-    return simular_temporada(semilla=semilla)
+    equipos = []
+    # Replicar curva de LaLiga
+    niveles = [88, 86, 81, 79, 78, 77, 76, 75, 74, 73, 72, 71, 70, 70, 69, 68, 68, 67, 66, 65]
+    for i in range(1, 21):
+        nivel = niveles[i - 1]
+        equipos.append(crear_equipo_con_nivel(id_equipo=i, nombre=f"Equipo {i}", nivel_general=nivel))
+
+    return simular_temporada(equipos=equipos, semilla=semilla)
 
 
 # ── Tests SEASON_TARGETS ──────────────────────────────────────────────────────
 
 
-@pytest.mark.skip(reason="Fase 10 pendiente: plantillas de temporada no configuradas")
+
 def test_puntos_campeon() -> None:
     resultado = _simular_una_temporada()
     puntos_campeon = resultado.clasificacion[0].puntos
     assert_target(float(puntos_campeon), SEASON_TARGETS["champion_points"], "champion_points")
 
 
-@pytest.mark.skip(reason="Fase 10 pendiente: plantillas de temporada no configuradas")
+
 def test_puntos_descenso_18() -> None:
     resultado = _simular_una_temporada()
     puntos_18 = resultado.clasificacion[17].puntos
     assert_target(float(puntos_18), SEASON_TARGETS["relegation_pts_18th"], "relegation_pts_18th")
 
 
-@pytest.mark.skip(reason="Fase 10 pendiente: plantillas de temporada no configuradas")
+
 def test_goles_totales_temporada() -> None:
     resultado = _simular_una_temporada()
     total_goles = (
@@ -57,7 +65,7 @@ def test_goles_totales_temporada() -> None:
     )
 
 
-@pytest.mark.skip(reason="Fase 10 pendiente: plantillas de temporada no configuradas")
+
 def test_equipos_con_mas_de_60_puntos() -> None:
     resultado = _simular_una_temporada()
     equipos_60 = sum(1 for c in resultado.clasificacion if c.puntos > 60)
@@ -66,7 +74,7 @@ def test_equipos_con_mas_de_60_puntos() -> None:
     assert lo <= equipos_60 <= hi, f"teams_over_60={equipos_60} fuera de [{lo}, {hi}]"
 
 
-@pytest.mark.skip(reason="Fase 10 pendiente: plantillas de temporada no configuradas")
+
 def test_reproducibilidad_temporada() -> None:
     r1 = _simular_una_temporada(semilla=2025)
     r2 = _simular_una_temporada(semilla=2025)

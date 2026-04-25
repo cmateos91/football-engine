@@ -29,6 +29,7 @@ BENCHMARKS_EQUIPO = {
     "posesion_por_equipo_por_partido": {"min": 44.0, "max": 56.0, "ideal": 50.0},
 }
 
+
 class RealismScorecard:
     """Evalúa la calidad de una simulación masiva contra targets reales."""
 

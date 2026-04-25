@@ -279,7 +279,7 @@ def simular_temporada(
         jornada_actual = jornada_idx + 1
 
         # Recuperación entre jornadas
-        _aplicar_recuperacion(estados_jugadores)
+        _aplicar_recuperacion(estados_jugadores, jornada_actual)
 
         for partido_j in jornada:
             eq_local = next(e for e in equipos if e.id == partido_j.equipo_local_id)
@@ -322,8 +322,7 @@ def simular_temporada(
                 stats_jugs=stats_jugs,
             )
 
-            # Actualizar fatiga y posibles lesiones
-            _actualizar_estado_tras_partido(resultado, estados_jugadores, jornada_actual, generador)
+            _actualizar_estado_tras_partido(resultado, estados_jugadores, jornada_actual, generador, stats_jugs)
 
             partido_id += 1
 
@@ -364,10 +363,10 @@ def _filtrar_disponibles(
     return dataclasses.replace(equipo, jugadores=tuple(jugadores_disp))
 
 
-def _aplicar_recuperacion(estados: dict[int, EstadoJugadorTemporada]) -> None:
+def _aplicar_recuperacion(estados: dict[int, EstadoJugadorTemporada], jornada_actual: int) -> None:
     for estado in estados.values():
-        if estado.lesionado_hasta == 0:  # Si no está lesionado, recupera
-            estado.energia = min(100.0, estado.energia + 15.0)
+        if estado.lesionado_hasta < jornada_actual:  # Si no está lesionado, recupera
+            estado.energia = min(100.0, estado.energia + 60.0)
 
 
 def _actualizar_estado_tras_partido(
@@ -375,6 +374,7 @@ def _actualizar_estado_tras_partido(
     estados: dict[int, EstadoJugadorTemporada],
     jornada: int,
     generador: Random,
+    stats_jugs: dict[int, EstadisticasJugadorTemporada],
 ) -> None:
     # Reducir energía a los que jugaron
     todos_jugadores = list(resultado.alineacion_local.titulares) + list(
@@ -393,6 +393,8 @@ def _actualizar_estado_tras_partido(
             duracion = generador.randint(1, 4)
             estado.lesionado_hasta = jornada + duracion
             estado.energia = 50.0  # La lesión baja la energía drásticamente
+            if j.id in stats_jugs:
+                stats_jugs[j.id].lesiones += 1
 
 
 def _actualizar_estadisticas(
@@ -462,15 +464,38 @@ def _actualizar_estadisticas(
                     jugador_id=jid, nombre=jugador.nombre, equipo_id=jugador.id_equipo
                 )
 
+        if e.jugador_secundario_id is not None and e.jugador_secundario_id not in stats_jugs:
+            asistidor = None
+            for j in resultado.alineacion_local.titulares:
+                if j.id == e.jugador_secundario_id:
+                    asistidor = j
+                    break
+            if not asistidor:
+                for j in resultado.alineacion_visitante.titulares:
+                    if j.id == e.jugador_secundario_id:
+                        asistidor = j
+                        break
+            if asistidor:
+                stats_jugs[e.jugador_secundario_id] = EstadisticasJugadorTemporada(
+                    jugador_id=asistidor.id, nombre=asistidor.nombre, equipo_id=asistidor.id_equipo
+                )
+
         if jid in stats_jugs:
             s = stats_jugs[jid]
             from motor_futbol.dominio import TipoEventoPartido
 
             if e.tipo is TipoEventoPartido.GOL:
                 s.goles += 1
+                if e.jugador_secundario_id is not None and e.jugador_secundario_id in stats_jugs:
+                    stats_jugs[e.jugador_secundario_id].assistencias += 1
+            elif e.tipo is TipoEventoPartido.TARJETA_AMARILLA:
+                s.tarjetas_amarillas += 1
+            elif e.tipo is TipoEventoPartido.TARJETA_ROJA:
+                s.tarjetas_rojas += 1
             elif e.tipo is TipoEventoPartido.TIRO:
-                # Sumamos xG si el evento lo tuviera, o de forma simplificada
-                pass
+                xg = e.metadatos.get("xg", 0.0) if e.metadatos else 0.0
+                if isinstance(xg, float | int):
+                    s.xg_acumulado += float(xg)
 
     # Registrar titularidades y minutos (baseline: 90 min)
     for j in resultado.alineacion_local.titulares:

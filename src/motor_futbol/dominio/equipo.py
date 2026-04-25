@@ -40,6 +40,25 @@ class Equipo:
     def total_jugadores(self) -> int:
         return len(self.jugadores)
 
+    @property
+    def overall_medio(self) -> float:
+        if not self.jugadores:
+            return 0.0
+        return sum(j.overall for j in self.jugadores) / len(self.jugadores)
+
+    @property
+    def nombre_corto(self) -> str:
+        """Genera un código de 3 letras para el equipo."""
+        # Limpiar prefijos comunes como 'Real ', 'FC ', 'CD ', 'CA '
+        limpio = self.nombre
+        for prefijo in ["Real ", "FC ", "CD ", "CA ", "RCD ", "SD "]:
+            if limpio.startswith(prefijo):
+                limpio = limpio[len(prefijo) :]
+                break
+        
+        # Tomar las primeras 3 letras en mayúsculas
+        return limpio[:3].upper()
+
     def obtener_jugador(self, id_jugador: int) -> Jugador:
         for jugador in self.jugadores:
             if jugador.id == id_jugador:

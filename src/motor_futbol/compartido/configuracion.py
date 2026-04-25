@@ -53,6 +53,12 @@ def _cargar_fuente_desde_entorno(ruta_env: str | Path | None) -> dict[str, str]:
     ruta_resuelta = Path(ruta_env or ARCHIVO_ENTORNO_POR_DEFECTO)
     variables_archivo = _cargar_archivo_env(ruta_resuelta)
     variables_sistema = dict(os.environ)
+
+    # Si se proporciona una ruta explícita y el archivo existe, sus variables deben mandar
+    # para evitar que el entorno del sistema (ej: ENTORNO=desarrollo) rompa los tests.
+    if ruta_env is not None and ruta_resuelta.exists():
+        return {**variables_sistema, **variables_archivo}
+
     return {**variables_archivo, **variables_sistema}
 
 

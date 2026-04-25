@@ -79,10 +79,6 @@ def _distribucion_tipos(rs: list[ResultadoSimulacionPartido]) -> dict[str, float
     return {k: v / total for k, v in conteos.items()}
 
 
-@pytest.mark.xfail(
-    reason="El motor no registra 'tipo_gol' en metadatos del evento GOL (Fase 7 pendiente)",
-    strict=False,
-)
 @pytest.mark.parametrize("tipo", list(GOAL_TYPE_TARGETS.keys()))
 def test_distribucion_tipos_gol(
     tipo: str,

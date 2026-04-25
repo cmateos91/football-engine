@@ -44,6 +44,7 @@ class _EstadoEquipoMutable:
     corners: int = 0
     tarjetas_amarillas: int = 0
     tarjetas_rojas: int = 0
+    es_local: bool = False
     energia_actual: float = 100.0
     energia_acumulada: float = 0.0
     energia_muestras: int = 0
@@ -81,6 +82,7 @@ def simular_partido_baseline(
     )
 
     estado_local = _EstadoEquipoMutable(contexto.equipo_local, alineacion_local)
+    estado_local.es_local = True
     estado_visitante = _EstadoEquipoMutable(contexto.equipo_visitante, alineacion_visitante)
 
     total_posesiones = _resolver_total_posesiones(generador, parametros_resueltos)
@@ -125,8 +127,7 @@ def simular_partido_baseline(
                 minuto=minuto,
                 equipo_id=atacante.equipo.id,
                 descripcion=(
-                    f"Perdida de balon por {tipo_perdida}. "
-                    f"Recupera {atacante.equipo.nombre}"
+                    f"Perdida de balon por {tipo_perdida}. Recupera {atacante.equipo.nombre}"
                 ),
                 metadatos={"causa": tipo_perdida},
             )
@@ -193,6 +194,7 @@ def simular_partido_iterativo(
     )
 
     estado_local = _EstadoEquipoMutable(contexto.equipo_local, alineacion_local)
+    estado_local.es_local = True
     estado_visitante = _EstadoEquipoMutable(contexto.equipo_visitante, alineacion_visitante)
 
     total_posesiones = _resolver_total_posesiones(generador, parametros_resueltos)
@@ -251,14 +253,14 @@ def simular_partido_iterativo(
         if ultimo_poseedor_id is not None and atacante.equipo.id != ultimo_poseedor_id:
             tipo_p = generador.choice(["Interceptacion", "Mal pase", "Presion rival"])
             transicion = EventoPartido(
-                tipo=TipoEventoPartido.PASE,
+                tipo=TipoEventoPartido.RECUPERACION,
                 minuto=minuto,
-                equipo_id=ultimo_poseedor_id,
+                equipo_id=atacante.equipo.id,
                 descripcion=f"Perdida de balon ({tipo_p}). Recupera {atacante.equipo.nombre}",
             )
             yield EstadoIteracion.desde_estado(
                 minuto=minuto,
-                posesion_id=ultimo_poseedor_id,
+                posesion_id=atacante.equipo.id,
                 evento=transicion,
                 estado_espacial=estado_espacial,
                 energia_local=estado_local.energia_actual,
@@ -345,25 +347,12 @@ def _calcular_cuotas_posesion(
     posesion_local = _fortaleza_posesion(local.alineacion)
     posesion_visitante = _fortaleza_posesion(visitante.alineacion)
     razon = posesion_local / max(1.0, posesion_visitante)
-    razon_base = min(razon, 1.06)
-    razon_base = max(razon_base, 0.94)
+    # Ampliar el rango de posesión para reflejar mejor las diferencias de calidad
+    razon_base = min(razon, 1.18)
+    razon_base = max(razon_base, 0.82)
     posesion_50 = 50.0
-    cuota_local = posesion_50 + (razon_base - 1.0) * 60.0 + 4.2
+    cuota_local = posesion_50 + (razon_base - 1.0) * 100.0 + 6.5
     return cuota_local / 100.0, (100.0 - cuota_local) / 100.0
-
-
-def _resolver_poseedor(
-    *,
-    generador: Random,
-    local: _EstadoEquipoMutable,
-    visitante: _EstadoEquipoMutable,
-    posesion_local: float,
-    posesion_visitante: float,
-) -> tuple[_EstadoEquipoMutable, _EstadoEquipoMutable]:
-    del posesion_visitante
-    if generador.random() < posesion_local:
-        return local, visitante
-    return visitante, local
 
 
 def _obtener_modificador_mentalidad(alineacion: Alineacion) -> float:
@@ -427,19 +416,26 @@ def _simular_posesion(
         * mod_ritmo
         * mod_marcador_ataca
     )
+    if atacante.es_local:
+        ataque *= 1.08
+
     defensa = (
         _fortaleza_defensa(defensor.alineacion, defensor.energia_actual)
         * mod_defensa
         * mod_presion
         * mod_marcador_defiende
     )
+    if defensor.es_local:
+        defensa *= 1.08
     porteria = _fortaleza_porteria(defensor.alineacion, defensor.energia_actual)
 
-    duel = ataque / max(1.0, ataque + defensa + porteria)
+    # Usar exponente para amplificar las diferencias de calidad entre equipos
+    ratio_bruto = ataque / max(1.0, defensa + porteria)
+    duel = ratio_bruto ** 1.8 / (1.0 + ratio_bruto ** 1.8)
     probabilidad_tiro = _acotar(
-        parametros.probabilidad_base_tiro + (duel - 0.33) * 0.45,
+        parametros.probabilidad_base_tiro + (duel - 0.33) * 0.60,
         minimo=0.03,
-        maximo=0.38,
+        maximo=0.45,
     )
     zona_actual = estado_espacial.posicion_balon.zona
     en_zona_ataque = zona_actual in (
@@ -452,6 +448,7 @@ def _simular_posesion(
     if not en_zona_ataque:
         probabilidad_tiro *= parametros.probabilidad_base_tiro_fuera_zona
 
+    # 1. Triggers de eventos a balón parado / especiales
     # Si estamos en banda de ataque, probabilidad de centro
     if en_banda_ataque and generador.random() < parametros.probabilidad_centro:
         return _resolver_centro(
@@ -463,6 +460,42 @@ def _simular_posesion(
             parametros=parametros,
         )
 
+    # Probabilidad de contraataque
+    probabilidad_contraataque = _acotar(
+        parametros.probabilidad_contraataque
+        + (defensor.energia_actual - atacante.energia_actual) / 600,
+        minimo=0.01,
+        maximo=0.10,
+    )
+    if generador.random() < probabilidad_contraataque and minuto > 20:
+        return _resolver_contraataque(
+            generador=generador,
+            minuto=minuto,
+            atacante=atacante,
+            defensor=defensor,
+            estado_espacial=estado_espacial,
+            parametros=parametros,
+        )
+
+    # Probabilidad de falta (puede derivar en penalti o falta directa)
+    probabilidad_falta = _acotar(
+        parametros.probabilidad_base_falta
+        + (_indice_agresividad(defensor.alineacion) - 50.0) / 500
+        + (_obtener_modificador_agresividad_tactica(defensor.alineacion) - 1.0) * 0.15,
+        minimo=0.03,
+        maximo=0.28,
+    )
+    if generador.random() < probabilidad_falta:
+        return _resolver_falta(
+            generador=generador,
+            minuto=minuto,
+            atacante=atacante,
+            defensor=defensor,
+            estado_espacial=estado_espacial,
+            parametros=parametros,
+        )
+
+    # 2. Tiro de campo
     if generador.random() < probabilidad_tiro:
         if not en_zona_ataque:
             nueva_posicion = _mover_a_zona_ataque(generador, estado_espacial)
@@ -477,53 +510,10 @@ def _simular_posesion(
             defensa=defensa,
             porteria=porteria,
             parametros=parametros,
-        )
-    probabilidad_contraataque = _acotar(
-        parametros.probabilidad_contraataque
-        + (defensor.energia_actual - atacante.energia_actual) / 600,
-        minimo=0.01,
-        maximo=0.10,
-    )
-    probabilidad_falta = _acotar(
-        parametros.probabilidad_base_falta
-        + (_indice_agresividad(defensor.alineacion) - 50.0) / 500
-        + (_obtener_modificador_agresividad_tactica(defensor.alineacion) - 1.0) * 0.15,
-        minimo=0.03,
-        maximo=0.28,
-    )
-
-    if generador.random() < probabilidad_contraataque and minuto > 20:
-        return _resolver_contraataque(
-            generador=generador,
-            minuto=minuto,
-            atacante=atacante,
-            defensor=defensor,
-            estado_espacial=estado_espacial,
-            parametros=parametros,
+            tipo_jugada="open_play",
         )
 
-    if generador.random() < probabilidad_tiro:
-        return _resolver_tiro(
-            generador=generador,
-            minuto=minuto,
-            atacante=atacante,
-            defensor=defensor,
-            estado_espacial=estado_espacial,
-            ataque=ataque,
-            defensa=defensa,
-            porteria=porteria,
-            parametros=parametros,
-        )
-
-    if generador.random() < probabilidad_falta:
-        return _resolver_falta(
-            generador=generador,
-            minuto=minuto,
-            atacante=atacante,
-            defensor=defensor,
-            parametros=parametros,
-        )
-
+    # 3. Posesión elaborada (Pase)
     pasador = _elegir_jugador_para_pase(generador, atacante.alineacion.titulares)
     _procesar_pase(generador, estado_espacial, pasador)
     evento = EventoPartido(
@@ -548,9 +538,18 @@ def _resolver_tiro(
     defensa: float,
     porteria: float,
     parametros: ParametrosSimulacionBaseline,
+    tipo_jugada: str = "open_play",
+    es_balon_parado: bool = False,
 ) -> list[EventoPartido]:
     atacante.tiros += 1
     tirador = _elegir_tirador(generador, atacante.alineacion.titulares)
+
+    posicion_tiro = (estado_espacial.posicion_balon.x, estado_espacial.posicion_balon.y)
+    resultado_xg = calcular_xg(
+        tirador=tirador,
+        posicion_tiro=posicion_tiro,
+        energia=atacante.energia_actual,
+    )
 
     eventos: list[EventoPartido] = [
         EventoPartido(
@@ -559,67 +558,70 @@ def _resolver_tiro(
             equipo_id=atacante.equipo.id,
             jugador_principal_id=tirador.id,
             descripcion=f"Tiro de {tirador.nombre}",
+            metadatos={"xg": resultado_xg.xg},
         )
     ]
 
     calidad_tiro = _calidad_individual_tiro(tirador, atacante.energia_actual)
     bloque_defensivo = defensa * 0.55 + porteria * 0.45
     probabilidad_puerta = _acotar(
-        parametros.probabilidad_base_tiro_puerta + (calidad_tiro - bloque_defensivo) / 300,
+        parametros.probabilidad_base_tiro_puerta + (calidad_tiro - bloque_defensivo) / 180,
         minimo=0.18,
         maximo=0.65,
     )
     if generador.random() >= probabilidad_puerta:
-        if generador.random() < parametros.probabilidad_base_corner:
-            atacante.corners += 1
-            corner = EventoPartido(
-                tipo=TipoEventoPartido.CORNER,
+        # Si el tiro no va a puerta, puede ser corner (evitar recursión infinita)
+        if not es_balon_parado and generador.random() < parametros.probabilidad_base_corner * 1.2:
+            return eventos + _resolver_corner(
+                generador=generador,
                 minuto=minuto,
-                equipo_id=atacante.equipo.id,
-                descripcion=f"Corner para {atacante.equipo.nombre}",
+                atacante=atacante,
+                defensor=defensor,
+                estado_espacial=estado_espacial,
+                parametros=parametros,
             )
-            atacante.eventos.append(corner)
-            eventos.append(corner)
         atacante.eventos.extend(eventos)
         return eventos
 
     atacante.tiros_a_puerta += 1
-    posicion_tiro = (estado_espacial.posicion_balon.x, estado_espacial.posicion_balon.y)
-    resultado_xg = calcular_xg(
-        tirador=tirador,
-        posicion_tiro=posicion_tiro,
-        energia=atacante.energia_actual,
-    )
     probabilidad_gol = _acotar(
         resultado_xg.xg * (parametros.probabilidad_base_gol / 0.28),
         minimo=0.001,
         maximo=0.85,
     )
-    # Rebalance temporal de goles para acercar la distribución a LaLiga.
+    # Rebalance temporal de goles
     if minuto <= 15:
-        probabilidad_gol *= 0.62
+        probabilidad_gol *= 0.55
     elif minuto <= 30:
-        probabilidad_gol *= 0.90
-    elif minuto <= 45:
         probabilidad_gol *= 0.82
+    elif minuto <= 45:
+        probabilidad_gol *= 0.72
     elif minuto <= 60:
-        probabilidad_gol *= 0.98
+        probabilidad_gol *= 0.85
     elif minuto <= 75:
-        probabilidad_gol *= 1.06
+        probabilidad_gol *= 1.08
     elif minuto <= 90:
-        probabilidad_gol *= 1.45
+        probabilidad_gol *= 1.55
     else:
-        probabilidad_gol *= 2.20
+        probabilidad_gol *= 4.50
     probabilidad_gol = _acotar(probabilidad_gol, minimo=0.001, maximo=0.92)
 
     if generador.random() < probabilidad_gol:
         atacante.goles += 1
+        asistidor = None
+        if generador.random() < 0.65 and tipo_jugada != "penalty":
+            candidatos_asistencia = [j for j in atacante.alineacion.titulares if j.id != tirador.id]
+            if candidatos_asistencia:
+                asistidor = _elegir_jugador_para_pase(generador, tuple(candidatos_asistencia))
+
         gol = EventoPartido(
             tipo=TipoEventoPartido.GOL,
             minuto=minuto,
             equipo_id=atacante.equipo.id,
             jugador_principal_id=tirador.id,
+            jugador_secundario_id=asistidor.id if asistidor else None,
             descripcion=f"Gol de {tirador.nombre}",
+            metadatos={"tipo_gol": tipo_jugada},
         )
         atacante.eventos.append(gol)
         eventos.append(gol)
@@ -635,6 +637,18 @@ def _resolver_tiro(
     )
     defensor.eventos.append(parada)
     eventos.append(parada)
+
+    # Tras una parada, también puede haber corner (evitar recursión infinita)
+    if not es_balon_parado and generador.random() < parametros.probabilidad_base_corner * 1.8:
+        return eventos + _resolver_corner(
+            generador=generador,
+            minuto=minuto,
+            atacante=atacante,
+            defensor=defensor,
+            estado_espacial=estado_espacial,
+            parametros=parametros,
+        )
+
     return eventos
 
 
@@ -646,6 +660,7 @@ def _resolver_centro(
     defensor: _EstadoEquipoMutable,
     estado_espacial: EstadoEspacialPartido,
     parametros: ParametrosSimulacionBaseline,
+    es_balon_parado: bool = False,
 ) -> list[EventoPartido]:
     """Resuelve una jugada de centro al área."""
     pasador = _elegir_jugador_para_pase(generador, atacante.alineacion.titulares)
@@ -679,17 +694,39 @@ def _resolver_centro(
             eventos.append(duelo)
             atacante.eventos.append(duelo)
 
+            # Movemos el balón al área para el tiro
+            estado_espacial.mover_a(Coordenada(92.0, 50.0))
+
             return eventos + _resolver_tiro(
                 generador=generador,
                 minuto=minuto,
                 atacante=atacante,
                 defensor=defensor,
                 estado_espacial=estado_espacial,
-                ataque=70.0,
-                defensa=50.0,
+                ataque=75.0,
+                defensa=45.0,
                 porteria=60.0,
                 parametros=parametros,
+                tipo_jugada="cross",
+                es_balon_parado=es_balon_parado,
             )
+        else:
+            # Si el defensor gana el duelo, hay una pequeña probabilidad de autogol
+            if generador.random() < 0.04:
+                atacante.goles += 1
+                atacante.tiros += 1
+                atacante.tiros_a_puerta += 1
+                autogol = EventoPartido(
+                    tipo=TipoEventoPartido.GOL,
+                    minuto=minuto,
+                    equipo_id=atacante.equipo.id,  # El gol sube al atacante
+                    jugador_principal_id=defensor_aire.id,
+                    descripcion=f"Gol en propia puerta de {defensor_aire.nombre}",
+                    metadatos={"tipo_gol": "own_goal"},
+                )
+                atacante.eventos.append(autogol)
+                eventos.append(autogol)
+                return eventos
 
     return eventos
 
@@ -731,6 +768,9 @@ def _resolver_contraataque(
 
     eventos = [evento]
 
+    # Progresión rápida al área
+    estado_espacial.mover_a(Coordenada(85.0, generador.uniform(30, 70)))
+
     ataque = _fortaleza_ataque(atacante.alineacion, atacante.energia_actual) * 0.50
     defensa = _fortaleza_defensa(defensor.alineacion, defensor.energia_actual) * 0.35
     porteria = _fortaleza_porteria(defensor.alineacion, defensor.energia_actual) * 0.15
@@ -738,7 +778,7 @@ def _resolver_contraataque(
     probabilidad_tiro = _acotar(0.40 + ataque / 200, minimo=0.20, maximo=0.65)
 
     if generador.random() < probabilidad_tiro:
-        return _resolver_tiro(
+        return eventos + _resolver_tiro(
             generador=generador,
             minuto=minuto,
             atacante=atacante,
@@ -748,6 +788,7 @@ def _resolver_contraataque(
             defensa=defensa,
             porteria=porteria,
             parametros=parametros,
+            tipo_jugada="counter",
         )
 
     return eventos
@@ -759,6 +800,7 @@ def _resolver_falta(
     minuto: int,
     atacante: _EstadoEquipoMutable,
     defensor: _EstadoEquipoMutable,
+    estado_espacial: EstadoEspacialPartido,
     parametros: ParametrosSimulacionBaseline,
 ) -> list[EventoPartido]:
     infractor = _elegir_defensor_agresivo(generador, defensor.alineacion.titulares)
@@ -773,6 +815,7 @@ def _resolver_falta(
         )
     ]
 
+    # Tarjetas
     probabilidad_roja = _acotar(
         parametros.probabilidad_roja + (infractor.atributos.agresividad - 50) / 5000,
         minimo=0.001,
@@ -807,7 +850,184 @@ def _resolver_falta(
         eventos.append(amarilla)
 
     defensor.eventos.extend(eventos)
+
+    # ¿Penalti, Falta Directa o Falta simple?
+    zona = estado_espacial.posicion_balon.zona
+    en_area = zona == ZonaCampo.ATAQUE_CNT and estado_espacial.posicion_balon.x > 84
+
+    if en_area and generador.random() < parametros.probabilidad_penalti:
+        return eventos + _resolver_penalti(
+            generador=generador,
+            minuto=minuto,
+            atacante=atacante,
+            defensor=defensor,
+            estado_espacial=estado_espacial,
+            parametros=parametros,
+        )
+
+    if zona in (ZonaCampo.ATAQUE_CNT, ZonaCampo.MEDIO_CNT) and generador.random() < 0.30:
+        return eventos + _resolver_falta_directa(
+            generador=generador,
+            minuto=minuto,
+            atacante=atacante,
+            defensor=defensor,
+            estado_espacial=estado_espacial,
+            parametros=parametros,
+        )
+
     return eventos
+
+
+def _resolver_penalti(
+    *,
+    generador: Random,
+    minuto: int,
+    atacante: _EstadoEquipoMutable,
+    defensor: _EstadoEquipoMutable,
+    estado_espacial: EstadoEspacialPartido,
+    parametros: ParametrosSimulacionBaseline,
+) -> list[EventoPartido]:
+    tirador = _elegir_tirador(generador, atacante.alineacion.titulares)
+    evento_penalti = EventoPartido(
+        tipo=TipoEventoPartido.PENALTI,
+        minuto=minuto,
+        equipo_id=atacante.equipo.id,
+        jugador_principal_id=tirador.id,
+        descripcion=f"Penalti a favor de {atacante.equipo.nombre}. Tira {tirador.nombre}",
+    )
+    atacante.eventos.append(evento_penalti)
+
+    # Ubicamos el balón en el punto de penalti
+    estado_espacial.mover_a(Coordenada(88.5, 50.0))
+
+    return [
+        evento_penalti,
+        *_resolver_tiro(
+            generador=generador,
+            minuto=minuto,
+            atacante=atacante,
+            defensor=defensor,
+            estado_espacial=estado_espacial,
+            ataque=100.0,  # Máxima probabilidad de acierto individual
+            defensa=0.0,  # Solo importa el portero
+            porteria=80.0,
+            parametros=parametros,
+            tipo_jugada="penalty",
+            es_balon_parado=True,
+        ),
+    ]
+
+
+def _resolver_corner(
+    *,
+    generador: Random,
+    minuto: int,
+    atacante: _EstadoEquipoMutable,
+    defensor: _EstadoEquipoMutable,
+    estado_espacial: EstadoEspacialPartido,
+    parametros: ParametrosSimulacionBaseline,
+) -> list[EventoPartido]:
+    atacante.corners += 1
+    pasador = _elegir_jugador_para_pase(generador, atacante.alineacion.titulares)
+    evento_corner = EventoPartido(
+        tipo=TipoEventoPartido.CORNER,
+        minuto=minuto,
+        equipo_id=atacante.equipo.id,
+        jugador_principal_id=pasador.id,
+        descripcion=f"Corner para {atacante.equipo.nombre}. Lanza {pasador.nombre}",
+    )
+    atacante.eventos.append(evento_corner)
+
+    # El corner ocurre desde una esquina de ataque
+    x_corner = 100.0
+    y_corner = 0.0 if generador.random() < 0.5 else 100.0
+    estado_espacial.mover_a(Coordenada(x_corner, y_corner))
+
+    # El corner suele derivar en un duelo aéreo directo o un centro elaborado
+    if generador.random() < 0.20:
+        # Intento directo de remate de corner
+        rematador = _elegir_tirador(generador, atacante.alineacion.titulares)
+        defensor_aire = _elegir_defensor_agresivo(generador, defensor.alineacion.titulares)
+
+        if _resolver_duelo_aereo(generador, rematador, defensor_aire):
+            # Remate exitoso de corner
+            duelo = EventoPartido(
+                tipo=TipoEventoPartido.DUELO_AEREO,
+                minuto=minuto,
+                equipo_id=atacante.equipo.id,
+                jugador_principal_id=rematador.id,
+                descripcion=f"{rematador.nombre} gana el duelo aéreo tras el corner",
+            )
+            atacante.eventos.append(duelo)
+
+            estado_espacial.mover_a(Coordenada(94.0, 50.0))
+            return [
+                evento_corner,
+                duelo,
+                *_resolver_tiro(
+                    generador=generador,
+                    minuto=minuto,
+                    atacante=atacante,
+                    defensor=defensor,
+                    estado_espacial=estado_espacial,
+                    ataque=65.0,
+                    defensa=45.0,
+                    porteria=60.0,
+                    parametros=parametros,
+                    tipo_jugada="corner",
+                    es_balon_parado=True,
+                ),
+            ]
+
+    return [
+        evento_corner,
+        *_resolver_centro(
+            generador=generador,
+            minuto=minuto,
+            atacante=atacante,
+            defensor=defensor,
+            estado_espacial=estado_espacial,
+            parametros=parametros,
+            es_balon_parado=True,
+        ),
+    ]
+
+
+def _resolver_falta_directa(
+    *,
+    generador: Random,
+    minuto: int,
+    atacante: _EstadoEquipoMutable,
+    defensor: _EstadoEquipoMutable,
+    estado_espacial: EstadoEspacialPartido,
+    parametros: ParametrosSimulacionBaseline,
+) -> list[EventoPartido]:
+    tirador = _elegir_tirador(generador, atacante.alineacion.titulares)
+    evento_fk = EventoPartido(
+        tipo=TipoEventoPartido.TIRO_LIBRE,
+        minuto=minuto,
+        equipo_id=atacante.equipo.id,
+        jugador_principal_id=tirador.id,
+        descripcion=f"Falta directa peligrosa para {atacante.equipo.nombre}",
+    )
+    atacante.eventos.append(evento_fk)
+
+    return [
+        evento_fk,
+        *_resolver_tiro(
+            generador=generador,
+            minuto=minuto,
+            atacante=atacante,
+            defensor=defensor,
+            estado_espacial=estado_espacial,
+            ataque=80.0,
+            defensa=60.0,
+            porteria=70.0,
+            parametros=parametros,
+            tipo_jugada="set_piece_fk",
+            es_balon_parado=True,
+        ),
+    ]
 
 
 def _construir_estadisticas(
@@ -844,6 +1064,18 @@ def _aplicar_fatiga(
     )
 
 
+def _amplificar_atributo(valor: float, centro: float = 77.0, factor_alto: float = 2.1, factor_bajo: float = 1.1) -> float:
+    """Amplifica las diferencias de atributos respecto a un centro.
+
+    Aplica amplificación asimétrica: los atributos por encima del centro
+    se amplifican más que los que están por debajo. Centro en 77 para
+    equilibrar la media de LaLiga.
+    """
+    desviacion = valor - centro
+    factor = factor_alto if desviacion >= 0 else factor_bajo
+    return centro + desviacion * factor
+
+
 def _fortaleza_posesion(alineacion: Alineacion) -> float:
     total = 0.0
     pesos = 0.0
@@ -861,12 +1093,12 @@ def _fortaleza_posesion(alineacion: Alineacion) -> float:
             PosicionJugador.PORTERO: 0.0,
         }[jugador.posicion]
         total += peso * (
-            jugador.atributos.pase_bajo * 0.30
-            + jugador.atributos.control_balon * 0.25
-            + jugador.atributos.posesion_cerrada * 0.20
-            + jugador.atributos.pase_elevado * 0.10
-            + jugador.atributos.regate * 0.10
-            + jugador.atributos.resistencia * 0.05
+            _amplificar_atributo(jugador.atributos.pase_bajo) * 0.30
+            + _amplificar_atributo(jugador.atributos.control_balon) * 0.25
+            + _amplificar_atributo(jugador.atributos.posesion_cerrada) * 0.20
+            + _amplificar_atributo(jugador.atributos.pase_elevado) * 0.10
+            + _amplificar_atributo(jugador.atributos.regate) * 0.10
+            + _amplificar_atributo(jugador.atributos.resistencia) * 0.05
         )
         pesos += peso
     return total / max(1.0, pesos)
@@ -890,13 +1122,13 @@ def _fortaleza_ataque(alineacion: Alineacion, energia_actual: float) -> float:
             PosicionJugador.PORTERO: 0.0,
         }[jugador.posicion]
         total += peso * (
-            jugador.atributos.finalizacion * 0.28
-            + jugador.atributos.potencia_tiro * 0.20
-            + jugador.atributos.control_balon * 0.12
-            + jugador.atributos.regate * 0.12
-            + jugador.atributos.awareness_ofensivo * 0.14
-            + jugador.atributos.pase_bajo * 0.08
-            + jugador.atributos.velocidad * 0.06
+            _amplificar_atributo(jugador.atributos.finalizacion) * 0.28
+            + _amplificar_atributo(jugador.atributos.potencia_tiro) * 0.20
+            + _amplificar_atributo(jugador.atributos.control_balon) * 0.12
+            + _amplificar_atributo(jugador.atributos.regate) * 0.12
+            + _amplificar_atributo(jugador.atributos.awareness_ofensivo) * 0.14
+            + _amplificar_atributo(jugador.atributos.pase_bajo) * 0.08
+            + _amplificar_atributo(jugador.atributos.velocidad) * 0.06
         )
         pesos += peso
     return (total / max(1.0, pesos)) * energia_factor
@@ -920,12 +1152,12 @@ def _fortaleza_defensa(alineacion: Alineacion, energia_actual: float) -> float:
             PosicionJugador.PORTERO: 0.0,
         }[jugador.posicion]
         total += peso * (
-            jugador.atributos.awareness_defensivo * 0.28
-            + jugador.atributos.tackles * 0.23
-            + jugador.atributos.engagement_defensivo * 0.20
-            + jugador.atributos.contacto_fisico * 0.10
-            + jugador.atributos.velocidad * 0.09
-            + jugador.atributos.salto * 0.10
+            _amplificar_atributo(jugador.atributos.awareness_defensivo) * 0.28
+            + _amplificar_atributo(jugador.atributos.tackles) * 0.23
+            + _amplificar_atributo(jugador.atributos.engagement_defensivo) * 0.20
+            + _amplificar_atributo(jugador.atributos.contacto_fisico) * 0.10
+            + _amplificar_atributo(jugador.atributos.velocidad) * 0.09
+            + _amplificar_atributo(jugador.atributos.salto) * 0.10
         )
         pesos += peso
     return (total / max(1.0, pesos)) * energia_factor

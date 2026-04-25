@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Partido — Motor de Fútbol</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;800;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #070a0d;
+    --bg2:      #0d1218;
+    --bg3:      #131920;
+    --local:    #22c55e;
+    --visit:    #a78bfa;
+    --goal:     #fbbf24;
+    --red:      #f87171;
+    --text:     #e8edf2;
+    --muted:    #4a5568;
+    --dimmed:   #8a9ab0;
+    --border:   rgba(255,255,255,0.07);
+  }
+
+  html, body { width: 100%; height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; overflow-x: hidden; }
+
+  /* Noise texture overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0;
+  }
+
+  #root { position: relative; z-index: 1; }
+
+  /* TWEAKS PANEL */
+  #tweaks-panel {
+    position: fixed; bottom: 24px; right: 24px; z-index: 1000;
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px; width: 240px;
+    display: none; flex-direction: column; gap: 14px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+  }
+  #tweaks-panel.open { display: flex; }
+  .tw-title { font-family: 'Barlow Condensed', sans-serif; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dimmed); margin-bottom: 4px; }
+  .tw-row { display: flex; flex-direction: column; gap: 5px; }
+  .tw-label { font-size: 11px; color: var(--dimmed); text-transform: uppercase; letter-spacing: 0.08em; }
+  .tw-row input[type=color] { width: 100%; height: 28px; border: none; background: none; cursor: pointer; }
+  .tw-row select { width: 100%; background: var(--bg3); border: 1px solid var(--border); color: var(--text); padding: 5px 8px; border-radius: 6px; font-size: 13px; }
+
+  .hide-scroll::-webkit-scrollbar { display: none; }
+
+  @keyframes goalFlash {
+    0%   { background: rgba(251,191,36,0.22); box-shadow: 0 0 80px 20px rgba(251,191,36,0.3); }
+    100% { background: transparent; box-shadow: none; }
+  }
+  @keyframes scorePop {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.18); color: var(--goal); text-shadow: 0 0 40px var(--goal); }
+    100% { transform: scale(1); }
+  }
+  @keyframes slideInLeft {
+    from { opacity: 0; transform: translateX(-28px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes slideInRight {
+    from { opacity: 0; transform: translateX(28px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.4; }
+  }
+  @keyframes liveDot {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.6); }
+    50%       { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="tweaks-panel">
+  <div class="tw-title">Tweaks</div>
+  <div class="tw-row">
+    <span class="tw-label">Color Local</span>
+    <input type="color" id="tw-local" value="#22c55e"/>
+  </div>
+  <div class="tw-row">
+    <span class="tw-label">Color Visitante</span>
+    <input type="color" id="tw-visit" value="#a78bfa"/>
+  </div>
+  <div class="tw-row">
+    <span class="tw-label">Intervalo eventos</span>
+    <select id="tw-speed">
+      <option value="600">Rápido (0.6s)</option>
+      <option value="1200" selected>Normal (1.2s)</option>
+      <option value="2000">Lento (2s)</option>
+    </select>
+  </div>
+</div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+/* ── MOCK DATA (simula la respuesta del backend) ── */
+const EQUIPOS = [
+  { id: 1, nombre: 'Andalucía Nervión',      iniciales: 'AN' },
+  { id: 2, nombre: 'Andalucía Verdiblanco',  iniciales: 'AV' },
+  { id: 3, nombre: 'Betis Promesas',         iniciales: 'BP' },
+  { id: 4, nombre: 'Sevilla FC B',           iniciales: 'SB' },
+];
+
+function generarPartidoMock(local, visitante) {
+  const eventos = [];
+  const goles = [];
+  let gL = 0, gV = 0;
+  const posesionLocal = 38 + Math.floor(Math.random() * 24);
+
+  const minutos = Array.from({length: 22}, (_, i) => 4 + i * 4 + Math.floor(Math.random()*3)).slice(0,22);
+  const tipos = ['ataque','ataque','parada','fallo_defensa','ataque','parada','gol'];
+
+  minutos.forEach((min, i) => {
+    const esLocal = Math.random() > 0.5;
+    const equipo = esLocal ? local.nombre : visitante.nombre;
+    const tipo = tipos[Math.floor(Math.random() * tipos.length)];
+
+    if (tipo === 'gol') {
+      esLocal ? gL++ : gV++;
+      const goleador = esLocal
+        ? ['R. Selva','M. Torres','J. Pérez','A. Gómez'][Math.floor(Math.random()*4)]
+        : ['V. Roco','I. Romeru','C. Nylond','D. Iscu'][Math.floor(Math.random()*4)];
+      goles.push({ minuto: min, equipo, goleador });
+      eventos.push({ minuto: min, equipo, tipo: 'gol',
+        descripcion: `¡GOL de ${goleador} para ${equipo}!` });
+    } else if (tipo === 'parada') {
+      const portero = esLocal
+        ? ['Martín','García'][Math.floor(Math.random()*2)]
+        : ['Nylond','Petra'][Math.floor(Math.random()*2)];
+      const rematador = !esLocal
+        ? ['R. Selva','M. Torres'][Math.floor(Math.random()*2)]
+        : ['V. Roco','D. Iscu'][Math.floor(Math.random()*2)];
+      eventos.push({ minuto: min, equipo, tipo: 'parada',
+        descripcion: `${portero} para el remate de ${rematador}` });
+    } else if (tipo === 'fallo_defensa') {
+      eventos.push({ minuto: min, equipo, tipo: 'fallo_defensa',
+        descripcion: `Fallo defensivo de ${equipo.split(' ')[0]}` });
+    } else {
+      eventos.push({ minuto: min, equipo, tipo: 'ataque',
+        descripcion: `Ataque peligroso de ${equipo.split(' ')[0]}` });
+    }
+  });
+
+  eventos.sort((a,b) => a.minuto - b.minuto);
+  return { golesLocal: gL, golesVisitante: gV, goles, eventos, posesionLocal };
+}
+
+/* ── HELPERS ── */
+function getIniciales(nombre) {
+  return nombre.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+}
+
+/* ── ICON MAP ── */
+function EventIcon({ tipo }) {
+  if (tipo === 'gol') return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <circle cx="8" cy="8" r="7" stroke="#fbbf24" strokeWidth="1.5"/>
+      <path d="M8 4l1.2 2.4L12 7l-2 1.9.47 2.7L8 10.4l-2.47 1.2L6 8.9 4 7l2.8-.6z" fill="#fbbf24"/>
+    </svg>
+  );
+  if (tipo === 'parada') return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <rect x="2" y="4" width="12" height="8" rx="1" stroke="#60a5fa" strokeWidth="1.5"/>
+      <path d="M8 4v8M2 8h12" stroke="#60a5fa" strokeWidth="1"/>
+    </svg>
+  );
+  if (tipo === 'fallo_defensa') return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <circle cx="8" cy="8" r="7" stroke="#f87171" strokeWidth="1.5"/>
+      <path d="M5 5l6 6M11 5l-6 6" stroke="#f87171" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  );
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M3 8h10M9 4l4 4-4 4" stroke="#a3e635" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function eventColor(tipo) {
+  if (tipo === 'gol')          return 'var(--goal)';
+  if (tipo === 'parada')       return '#60a5fa';
+  if (tipo === 'fallo_defensa')return 'var(--red)';
+  return '#a3e635';
+}
+
+/* ── POSSESSION BAR ── */
+function PosesionBar({ posLocal, localColor, visitColor, localNombre, visitNombre }) {
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <span style={{ fontFamily:'Barlow Condensed', fontSize:13, letterSpacing:'0.1em', color:'var(--dimmed)', textTransform:'uppercase' }}>Posesión</span>
+        <span style={{ fontFamily:'Barlow Condensed', fontSize:13, letterSpacing:'0.1em', color:'var(--dimmed)', textTransform:'uppercase' }}></span>
+      </div>
+      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        <span style={{ fontFamily:'Barlow Condensed', fontWeight:700, fontSize:18, color:localColor, minWidth:42, textAlign:'right' }}>{posLocal}%</span>
+        <div style={{ flex:1, height:6, background:'rgba(255,255,255,0.08)', borderRadius:3, overflow:'hidden', position:'relative' }}>
+          <div style={{
+            position:'absolute', left:0, top:0, bottom:0,
+            width: posLocal + '%',
+            background: `linear-gradient(90deg, ${localColor}, ${localColor}cc)`,
+            borderRadius:3,
+            transition: 'width 1s ease',
+            boxShadow: `0 0 8px ${localColor}88`
+          }}/>
+        </div>
+        <span style={{ fontFamily:'Barlow Condensed', fontWeight:700, fontSize:18, color:visitColor, minWidth:42 }}>{100-posLocal}%</span>
+      </div>
+      <div style={{ display:'flex', justifyContent:'space-between' }}>
+        <span style={{ fontSize:11, color:'var(--dimmed)' }}>{localNombre}</span>
+        <span style={{ fontSize:11, color:'var(--dimmed)', textAlign:'right' }}>{visitNombre}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ── TIMELINE ── */
+function Timeline({ minutoActual }) {
+  const pct = Math.min((minutoActual / 90) * 100, 100);
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+      <div style={{ position:'relative', height:4, background:'rgba(255,255,255,0.08)', borderRadius:2, overflow:'visible' }}>
+        {/* half line */}
+        <div style={{ position:'absolute', left:'50%', top:-3, width:1, height:10, background:'rgba(255,255,255,0.15)' }}/>
+        {/* progress */}
+        <div style={{ position:'absolute', left:0, top:0, bottom:0, width:pct+'%', background:'linear-gradient(90deg,#22c55e,#a3e635)', borderRadius:2, transition:'width 0.8s linear', boxShadow:'0 0 10px #22c55e66' }}/>
+        {/* dot */}
+        <div style={{ position:'absolute', top:'50%', left:`calc(${pct}% - 7px)`, transform:'translateY(-50%)', width:14, height:14, borderRadius:'50%', background:'white', border:'2px solid #22c55e', transition:'left 0.8s linear', boxShadow:'0 0 8px #22c55e' }}/>
+      </div>
+      <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'var(--muted)', fontFamily:'Barlow Condensed', letterSpacing:'0.06em' }}>
+        <span>0'</span><span>45'</span><span>90'</span>
+      </div>
+    </div>
+  );
+}
+
+/* ── EVENT ITEM ── */
+function EventItem({ ev, isLocal, localColor, visitColor, animate }) {
+  const color = isLocal ? localColor : visitColor;
+  const anim = animate
+    ? (isLocal ? 'slideInLeft 0.4s ease forwards' : 'slideInRight 0.4s ease forwards')
+    : 'none';
+  const bg = ev.tipo === 'gol'
+    ? `linear-gradient(135deg, ${color}22, ${color}08)`
+    : 'rgba(255,255,255,0.035)';
+  const border = ev.tipo === 'gol' ? `1px solid ${color}55` : '1px solid rgba(255,255,255,0.06)';
+
+  return (
+    <div style={{
+      animation: anim,
+      background: bg,
+      border,
+      borderRadius: 8,
+      padding: '9px 12px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      {ev.tipo === 'gol' && (
+        <div style={{ position:'absolute', inset:0, background:`radial-gradient(ellipse at ${isLocal?'left':'right'}, ${color}18, transparent 70%)`, pointerEvents:'none' }}/>
+      )}
+      <EventIcon tipo={ev.tipo}/>
+      <div style={{ flex:1 }}>
+        <div style={{ fontSize:12, color: eventColor(ev.tipo), lineHeight:1.3 }}>{ev.descripcion}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ── GOLES MARCADOS (pequeños debajo del score) ── */
+function GolesMarcados({ goles, localNombre, localColor, visitColor }) {
+  return (
+    <div style={{ display:'flex', gap:6, flexWrap:'wrap', justifyContent:'center' }}>
+      {goles.map((g,i) => {
+        const esLocal = g.equipo === localNombre;
+        const c = esLocal ? localColor : visitColor;
+        return (
+          <span key={i} style={{ fontFamily:'Barlow Condensed', fontSize:12, color:c, background:`${c}18`, border:`1px solid ${c}44`, borderRadius:20, padding:'2px 10px', animation:'fadeUp 0.4s ease forwards' }}>
+            {g.goleador} {g.minuto}'
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── MAIN APP ── */
+function App() {
+  const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+    "localColor": "#22c55e",
+    "visitColor": "#a78bfa",
+    "speedMs": 1200
+  }/*EDITMODE-END*/;
+
+  const [tweaks, setTweaks] = useState(TWEAK_DEFAULTS);
+  const [tweaksOpen, setTweaksOpen] = useState(false);
+
+  const [localId, setLocalId]     = useState(1);
+  const [visitId, setVisitId]     = useState(2);
+  const [estado, setEstado]       = useState('idle'); // idle | simulando | fin
+  const [minuto, setMinuto]       = useState(0);
+  const [golesL, setGolesL]       = useState(0);
+  const [golesV, setGolesV]       = useState(0);
+  const [golesArr, setGolesArr]   = useState([]);
+  const [eventosFeed, setEventosFeed] = useState([]);
+  const [posLocal, setPosLocal]   = useState(50);
+  const [goalFlash, setGoalFlash] = useState(false);
+  const [lastGolEquipo, setLastGolEquipo] = useState(null);
+  const [scoreAnim, setScoreAnim] = useState(false);
+
+  const timerRef = useRef(null);
+
+  const localEq  = EQUIPOS.find(e => e.id === localId);
+  const visitEq  = EQUIPOS.find(e => e.id === visitId);
+
+  /* tweaks wiring */
+  useEffect(() => {
+    const panel = document.getElementById('tweaks-panel');
+    if (tweaksOpen) panel.classList.add('open'); else panel.classList.remove('open');
+  }, [tweaksOpen]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--local', tweaks.localColor);
+    document.documentElement.style.setProperty('--visit', tweaks.visitColor);
+  }, [tweaks]);
+
+  useEffect(() => {
+    const lc = document.getElementById('tw-local');
+    const vc = document.getElementById('tw-visit');
+    const sp = document.getElementById('tw-speed');
+    if (!lc) return;
+    lc.value = tweaks.localColor;
+    vc.value = tweaks.visitColor;
+    sp.value = String(tweaks.speedMs);
+
+    const onChange = () => {
+      const next = { localColor: lc.value, visitColor: vc.value, speedMs: Number(sp.value) };
+      setTweaks(next);
+      window.parent.postMessage({ type: '__edit_mode_set_keys', edits: next }, '*');
+    };
+    lc.addEventListener('input', onChange);
+    vc.addEventListener('input', onChange);
+    sp.addEventListener('change', onChange);
+    return () => { lc.removeEventListener('input', onChange); vc.removeEventListener('input', onChange); sp.removeEventListener('change', onChange); };
+  }, [tweaksOpen]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.data?.type === '__activate_edit_mode')   setTweaksOpen(true);
+      if (e.data?.type === '__deactivate_edit_mode') setTweaksOpen(false);
+    };
+    window.addEventListener('message', handler);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  const simular = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    const resultado = generarPartidoMock(localEq, visitEq);
+    setEstado('simulando');
+    setMinuto(0); setGolesL(0); setGolesV(0);
+    setGolesArr([]); setEventosFeed([]);
+    setPosLocal(resultado.posesionLocal);
+    setGoalFlash(false); setScoreAnim(false);
+
+    let idx = 0;
+    let gL = 0, gV = 0;
+    const golesMarcados = [];
+
+    timerRef.current = setInterval(() => {
+      if (idx >= resultado.eventos.length) {
+        clearInterval(timerRef.current);
+        setMinuto(90);
+        setEstado('fin');
+        return;
+      }
+      const ev = resultado.eventos[idx];
+      setMinuto(ev.minuto);
+      const evConId = { ...ev, _uid: `${ev.minuto}-${ev.tipo}-${idx}` };
+      setEventosFeed(prev => [evConId, ...prev].slice(0, 30));
+
+      if (ev.tipo === 'gol') {
+        if (ev.equipo === localEq.nombre) gL++; else gV++;
+        setGolesL(gL); setGolesV(gV);
+        golesMarcados.push(resultado.goles.find(g => g.minuto === ev.minuto && g.equipo === ev.equipo) || { minuto: ev.minuto, equipo: ev.equipo, goleador: '?' });
+        setGolesArr([...golesMarcados]);
+        setGoalFlash(true); setScoreAnim(true);
+        setLastGolEquipo(ev.equipo);
+        setTimeout(() => { setGoalFlash(false); setScoreAnim(false); }, 1200);
+      }
+      idx++;
+    }, tweaks.speedMs);
+  }, [localEq, visitEq, tweaks.speedMs]);
+
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+
+  const lc = tweaks.localColor;
+  const vc = tweaks.visitColor;
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      padding: '32px 20px 40px',
+      gap: 0,
+      position: 'relative',
+      background: goalFlash
+        ? `radial-gradient(ellipse 60% 40% at 50% 20%, ${lastGolEquipo===localEq?.nombre ? lc : vc}18, transparent 70%)`
+        : 'transparent',
+      transition: 'background 0.5s',
+    }}>
+
+      {/* Header */}
+      <div style={{ fontFamily:'Barlow Condensed', letterSpacing:'0.25em', fontSize:11, color:'var(--muted)', textTransform:'uppercase', marginBottom:28, animation:'fadeUp 0.6s ease forwards' }}>
+        Motor de Fútbol
+      </div>
+
+      {/* Team selectors */}
+      <div style={{ display:'flex', alignItems:'center', gap:32, width:'100%', maxWidth:820, marginBottom:32, animation:'fadeUp 0.5s 0.1s ease both' }}>
+        <TeamSelector equipos={EQUIPOS} value={localId} onChange={setLocalId} color={lc} label="LOCAL" disabled={estado==='simulando'} align="right"/>
+        <div style={{ flex:1 }}/>
+        <TeamSelector equipos={EQUIPOS} value={visitId} onChange={setVisitId} color={vc} label="VISITANTE" disabled={estado==='simulando'} align="left"/>
+      </div>
+
+      {/* SCOREBOARD */}
+      <div style={{
+        width:'100%', maxWidth:820,
+        background: 'linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%)',
+        border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: 20,
+        padding: '32px 40px 28px',
+        marginBottom: 24,
+        position: 'relative',
+        overflow: 'hidden',
+        animation: 'fadeUp 0.5s 0.2s ease both',
+        boxShadow: goalFlash ? `0 0 60px 4px ${lastGolEquipo===localEq?.nombre ? lc : vc}33` : 'none',
+        transition: 'box-shadow 0.5s',
+      }}>
+        {/* subtle pitch lines bg */}
+        <div style={{ position:'absolute', inset:0, opacity:0.03, backgroundImage:"repeating-linear-gradient(0deg, white 0, white 1px, transparent 1px, transparent 32px)", pointerEvents:'none' }}/>
+
+        {/* team row */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr auto 1fr', alignItems:'center', gap:20, marginBottom:20 }}>
+          {/* Local */}
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:6 }}>
+            <div style={{ width:56, height:56, borderRadius:'50%', background:`${lc}22`, border:`2px solid ${lc}`, display:'flex', alignItems:'center', justifyContent:'center', alignSelf:'flex-end' }}>
+              <span style={{ fontFamily:'Barlow Condensed', fontWeight:800, fontSize:18, color:lc, letterSpacing:'0.05em' }}>{localEq ? getIniciales(localEq.nombre) : '--'}</span>
+            </div>
+            <span style={{ fontFamily:'Barlow Condensed', fontWeight:700, fontSize:20, color:'var(--text)', textAlign:'right', lineHeight:1.1 }}>{localEq?.nombre}</span>
+          </div>
+
+          {/* Score */}
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+              <span style={{
+                fontFamily: 'Barlow Condensed', fontWeight:900, fontSize:88, lineHeight:1,
+                color: 'var(--text)',
+                animation: scoreAnim && lastGolEquipo===localEq?.nombre ? 'scorePop 0.6s ease forwards' : 'none',
+                minWidth:60, textAlign:'center',
+              }}>{golesL}</span>
+              <span style={{ fontFamily:'Barlow Condensed', fontWeight:300, fontSize:40, color:'var(--muted)', lineHeight:1 }}>—</span>
+              <span style={{
+                fontFamily:'Barlow Condensed', fontWeight:900, fontSize:88, lineHeight:1,
+                color: 'var(--text)',
+                animation: scoreAnim && lastGolEquipo===visitEq?.nombre ? 'scorePop 0.6s ease forwards' : 'none',
+                minWidth:60, textAlign:'center',
+              }}>{golesV}</span>
+            </div>
+            {/* Minute + status */}
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              {estado === 'simulando' && (
+                <span style={{ width:8, height:8, borderRadius:'50%', background:'#ef4444', animation:'liveDot 1.2s infinite, pulse 1.2s infinite', display:'inline-block' }}/>
+              )}
+              {estado === 'fin' && (
+                <span style={{ width:8, height:8, borderRadius:'50%', background:'var(--muted)', display:'inline-block' }}/>
+              )}
+              <span style={{ fontFamily:'Barlow Condensed', fontWeight:600, fontSize:16, letterSpacing:'0.08em', color: estado==='simulando' ? '#ef4444' : 'var(--dimmed)' }}>
+                {estado === 'idle' ? '—' : estado === 'fin' ? 'FIN' : `${minuto}'`}
+              </span>
+              {estado === 'simulando' && <span style={{ fontFamily:'Barlow Condensed', fontSize:12, letterSpacing:'0.15em', color:'var(--muted)', textTransform:'uppercase' }}>EN VIVO</span>}
+            </div>
+          </div>
+
+          {/* Visitante */}
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:6 }}>
+            <div style={{ width:56, height:56, borderRadius:'50%', background:`${vc}22`, border:`2px solid ${vc}`, display:'flex', alignItems:'center', justifyContent:'center', alignSelf:'flex-start' }}>
+              <span style={{ fontFamily:'Barlow Condensed', fontWeight:800, fontSize:18, color:vc, letterSpacing:'0.05em' }}>{visitEq ? getIniciales(visitEq.nombre) : '--'}</span>
+            </div>
+            <span style={{ fontFamily:'Barlow Condensed', fontWeight:700, fontSize:20, color:'var(--text)', lineHeight:1.1 }}>{visitEq?.nombre}</span>
+          </div>
+        </div>
+
+        {/* Scorers */}
+        {golesArr.length > 0 && <div style={{ marginBottom:20 }}><GolesMarcados goles={golesArr} localNombre={localEq?.nombre} localColor={lc} visitColor={vc}/></div>}
+
+        {/* Possession */}
+        {estado !== 'idle' && (
+          <PosesionBar posLocal={posLocal} localColor={lc} visitColor={vc} localNombre={localEq?.nombre} visitNombre={visitEq?.nombre}/>
+        )}
+      </div>
+
+      {/* TIMELINE */}
+      {estado !== 'idle' && (
+        <div style={{ width:'100%', maxWidth:820, marginBottom:28, animation:'fadeUp 0.3s ease forwards' }}>
+          <Timeline minutoActual={minuto}/>
+        </div>
+      )}
+
+      {/* SIMULAR BUTTON */}
+      {(estado === 'idle' || estado === 'fin') && (
+        <button onClick={simular} style={{
+          fontFamily:'Barlow Condensed', fontWeight:700, fontSize:15, letterSpacing:'0.2em', textTransform:'uppercase',
+          background: `linear-gradient(135deg, ${lc}22, ${lc}11)`,
+          border: `1px solid ${lc}66`,
+          color: lc,
+          padding: '12px 40px',
+          borderRadius: 40,
+          cursor: 'pointer',
+          marginBottom: 28,
+          transition: 'all 0.2s',
+          boxShadow: `0 0 20px ${lc}22`,
+        }}
+        onMouseEnter={e => { e.target.style.background=`${lc}33`; e.target.style.boxShadow=`0 0 30px ${lc}44`; }}
+        onMouseLeave={e => { e.target.style.background=`linear-gradient(135deg, ${lc}22, ${lc}11)`; e.target.style.boxShadow=`0 0 20px ${lc}22`; }}
+        >
+          {estado === 'fin' ? '↻ Nuevo partido' : '▶  Simular partido'}
+        </button>
+      )}
+
+      {estado === 'simulando' && (
+        <div style={{ fontFamily:'Barlow Condensed', fontSize:12, letterSpacing:'0.2em', color:'var(--muted)', textTransform:'uppercase', marginBottom:28, animation:'pulse 1.5s infinite' }}>
+          simulando…
+        </div>
+      )}
+
+      {/* EVENT FEED */}
+      {eventosFeed.length > 0 && (
+        <div style={{ width:'100%', maxWidth:820, animation:'fadeUp 0.3s ease forwards' }}>
+          <div style={{ fontFamily:'Barlow Condensed', fontSize:11, letterSpacing:'0.15em', color:'var(--muted)', textTransform:'uppercase', marginBottom:14 }}>Eventos del partido</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:8, maxHeight:420, overflowY:'auto', paddingRight:4, scrollbarWidth:'none', msOverflowStyle:'none' }} className="hide-scroll">
+            {eventosFeed.map((ev, i) => {
+              const isLocal = ev.equipo === localEq?.nombre;
+              return (
+                <div key={ev._uid} style={{ display:'grid', gridTemplateColumns:'1fr 48px 1fr', alignItems:'center', gap:10 }}>
+                  {/* local side */}
+                  <div>
+                    {isLocal && <EventItem ev={ev} isLocal={true} localColor={lc} visitColor={vc} animate={i===0}/>}
+                  </div>
+                  {/* minute */}
+                  <div style={{ textAlign:'center', fontFamily:'Barlow Condensed', fontWeight:700, fontSize:16, color:'var(--dimmed)' }}>{ev.minuto}'</div>
+                  {/* visit side */}
+                  <div>
+                    {!isLocal && <EventItem ev={ev} isLocal={false} localColor={lc} visitColor={vc} animate={i===0}/>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── TEAM SELECTOR ── */
+function TeamSelector({ equipos, value, onChange, color, label, disabled, align }) {
+  const eq = equipos.find(e => e.id === value);
+  return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems: align==='right' ? 'flex-end' : 'flex-start', gap:4 }}>
+      <span style={{ fontFamily:'Barlow Condensed', fontSize:10, letterSpacing:'0.18em', color:'var(--muted)', textTransform:'uppercase' }}>{label}</span>
+      <select
+        value={value}
+        onChange={e => onChange(Number(e.target.value))}
+        disabled={disabled}
+        style={{
+          fontFamily:'Barlow Condensed', fontWeight:600, fontSize:15,
+          background:'var(--bg2)', border:`1px solid ${color}55`,
+          color:color, padding:'8px 14px', borderRadius:8, cursor:'pointer',
+          appearance:'none', outline:'none',
+          boxShadow: `0 0 12px ${color}22`,
+          minWidth:180,
+        }}
+      >
+        {equipos.map(eq => <option key={eq.id} value={eq.id}>{eq.nombre}</option>)}
+      </select>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

@@ -40,8 +40,13 @@ def narrar_evento(evento, local_id, nombre_local, nombre_visita):
     if not evento:
         return
 
+    # Omitimos los pases estándar para que la narración se centre en las jugadas clave (highlights)
+    if getattr(evento, "tipo", None) == TipoEventoPartido.PASE:
+        return
+
     emoji = "⏱️"
     color = Colores.RESET
+    descripcion = evento.descripcion
 
     if evento.tipo == TipoEventoPartido.GOL:
         emoji = "⚽ "
@@ -66,6 +71,12 @@ def narrar_evento(evento, local_id, nombre_local, nombre_visita):
         emoji = "🏹 "
     elif evento.tipo == TipoEventoPartido.DUELO_AEREO:
         emoji = "✈️  "
+    elif evento.tipo == TipoEventoPartido.RECUPERACION:
+        emoji = "🔄 "
+        # Transformar "Perdida de balon (X). Recupera Y" en "Recuperación de balón (X)"
+        descripcion = descripcion.replace("Perdida de balon", "Recuperación de balón")
+        if ". Recupera" in descripcion:
+            descripcion = descripcion.split(". Recupera")[0]
 
     # Formatear el mensaje
     equipo_str = (
@@ -75,7 +86,7 @@ def narrar_evento(evento, local_id, nombre_local, nombre_visita):
     )
     mensaje = (
         f"{Colores.BOLD}{evento.minuto:2}'{Colores.RESET} {emoji} "
-        f"{color}{equipo_str} {evento.descripcion}{Colores.RESET}"
+        f"{color}{equipo_str} {descripcion}{Colores.RESET}"
     )
 
     print(mensaje)
@@ -101,19 +112,7 @@ def ejecutar_narracion():
         madrid, barca = crear_equipo(154, "Real Madrid"), crear_equipo(149, "FC Barcelona")
 
     params = ParametrosSimulacionBaseline()
-    calib_path = Path("docs/calibration/ultimo_resultado.json")
-    if calib_path.exists():
-        with open(calib_path) as f:
-            data = json.load(f)["parametros"]
-            params = ParametrosSimulacionBaseline(
-                posesiones_base=data.get("posesiones_base", 114),
-                variacion_posesiones=data.get("posesiones_variacion", 18),
-                probabilidad_base_tiro=data.get("probabilidad_base_tiro", 0.105),
-                probabilidad_base_falta=data.get("probabilidad_base_falta", 0.10),
-                probabilidad_base_corner=data.get("probabilidad_base_corner", 0.20),
-                probabilidad_base_tiro_puerta=data.get("probabilidad_base_tiro_puerta", 0.32),
-                probabilidad_base_gol=data.get("probabilidad_base_gol", 0.28),
-            )
+    params = ParametrosSimulacionBaseline()
 
     ctx = ContextoPartido(
         competicion="LaLiga",
@@ -154,7 +153,7 @@ def ejecutar_narracion():
                     )
 
                 # Simular tiempo real (ajustar para ir más rápido o lento)
-                time.sleep(0.3)
+                time.sleep(0.01)
     except StopIteration:
         print("\n" + "-" * 70)
         print(f"{Colores.BOLD}🏁 FINAL DEL PARTIDO{Colores.RESET}")
