@@ -28,6 +28,7 @@ from motor_futbol.simulacion.modelos import (
     ParametrosSimulacionBaseline,
     ResultadoSimulacionPartido,
 )
+from motor_futbol.simulacion.narracion import NarradorPartido
 from motor_futbol.simulacion.selector_alineacion import construir_alineacion_baseline
 from motor_futbol.simulacion.xg import calcular_xg
 
@@ -73,6 +74,7 @@ def simular_partido_baseline(
     parametros_resueltos = parametros or ParametrosSimulacionBaseline()
     semilla = contexto.semilla if contexto.semilla is not None else 20260423
     generador = Random(semilla)
+    narrador = NarradorPartido(generador)
 
     alineacion_local = contexto.alineacion_local or construir_alineacion_baseline(
         contexto.equipo_local
@@ -126,8 +128,11 @@ def simular_partido_baseline(
                 tipo=TipoEventoPartido.RECUPERACION,
                 minuto=minuto,
                 equipo_id=atacante.equipo.id,
-                descripcion=(
-                    f"Perdida de balon por {tipo_perdida}. Recupera {atacante.equipo.nombre}"
+                descripcion=_descripcion_recuperacion(
+                    narrador=narrador,
+                    equipo=atacante.equipo.nombre,
+                    causa=tipo_perdida,
+                    zona=estado_espacial.posicion_balon.zona,
                 ),
                 metadatos={"causa": tipo_perdida},
             )
@@ -140,6 +145,7 @@ def simular_partido_baseline(
 
         eventos_posesion = _simular_posesion(
             generador=generador,
+            narrador=narrador,
             minuto=minuto,
             atacante=atacante,
             defensor=defensor,
@@ -185,6 +191,7 @@ def simular_partido_iterativo(
     parametros_resueltos = parametros or ParametrosSimulacionBaseline()
     semilla = contexto.semilla if contexto.semilla is not None else 20260423
     generador = Random(semilla)
+    narrador = NarradorPartido(generador)
 
     alineacion_local = contexto.alineacion_local or construir_alineacion_baseline(
         contexto.equipo_local
@@ -256,7 +263,12 @@ def simular_partido_iterativo(
                 tipo=TipoEventoPartido.RECUPERACION,
                 minuto=minuto,
                 equipo_id=atacante.equipo.id,
-                descripcion=f"Perdida de balon ({tipo_p}). Recupera {atacante.equipo.nombre}",
+                descripcion=_descripcion_recuperacion(
+                    narrador=narrador,
+                    equipo=atacante.equipo.nombre,
+                    causa=tipo_p,
+                    zona=estado_espacial.posicion_balon.zona,
+                ),
             )
             yield EstadoIteracion.desde_estado(
                 minuto=minuto,
@@ -276,6 +288,7 @@ def simular_partido_iterativo(
 
         evento_posesion = _simular_posesion(
             generador=generador,
+            narrador=narrador,
             minuto=minuto,
             atacante=atacante,
             defensor=defensor,
@@ -395,6 +408,7 @@ def _obtener_modificador_marcador(
 def _simular_posesion(
     *,
     generador: Random,
+    narrador: NarradorPartido,
     minuto: int,
     atacante: _EstadoEquipoMutable,
     defensor: _EstadoEquipoMutable,
@@ -453,6 +467,7 @@ def _simular_posesion(
     if en_banda_ataque and generador.random() < parametros.probabilidad_centro:
         return _resolver_centro(
             generador=generador,
+            narrador=narrador,
             minuto=minuto,
             atacante=atacante,
             defensor=defensor,
@@ -470,6 +485,7 @@ def _simular_posesion(
     if generador.random() < probabilidad_contraataque and minuto > 20:
         return _resolver_contraataque(
             generador=generador,
+            narrador=narrador,
             minuto=minuto,
             atacante=atacante,
             defensor=defensor,
@@ -488,6 +504,7 @@ def _simular_posesion(
     if generador.random() < probabilidad_falta:
         return _resolver_falta(
             generador=generador,
+            narrador=narrador,
             minuto=minuto,
             atacante=atacante,
             defensor=defensor,
@@ -502,6 +519,7 @@ def _simular_posesion(
             estado_espacial.mover_a(nueva_posicion)
         return _resolver_tiro(
             generador=generador,
+            narrador=narrador,
             minuto=minuto,
             atacante=atacante,
             defensor=defensor,
@@ -521,7 +539,12 @@ def _simular_posesion(
         minuto=minuto,
         equipo_id=atacante.equipo.id,
         jugador_principal_id=pasador.id,
-        descripcion=f"Posesion elaborada de {atacante.equipo.nombre}",
+        descripcion=_descripcion_posesion(
+            narrador=narrador,
+            equipo=atacante.equipo.nombre,
+            jugador=pasador.nombre,
+            zona=estado_espacial.posicion_balon.zona,
+        ),
     )
     atacante.eventos.append(evento)
     return [evento]
@@ -530,6 +553,7 @@ def _simular_posesion(
 def _resolver_tiro(
     *,
     generador: Random,
+    narrador: NarradorPartido,
     minuto: int,
     atacante: _EstadoEquipoMutable,
     defensor: _EstadoEquipoMutable,
@@ -557,7 +581,13 @@ def _resolver_tiro(
             minuto=minuto,
             equipo_id=atacante.equipo.id,
             jugador_principal_id=tirador.id,
-            descripcion=f"Tiro de {tirador.nombre}",
+            descripcion=_descripcion_tiro(
+                narrador=narrador,
+                jugador=tirador.nombre,
+                equipo=atacante.equipo.nombre,
+                minuto=minuto,
+                zona=estado_espacial.posicion_balon.zona,
+            ),
             metadatos={"xg": resultado_xg.xg},
         )
     ]
@@ -574,6 +604,7 @@ def _resolver_tiro(
         if not es_balon_parado and generador.random() < parametros.probabilidad_base_corner * 1.2:
             return eventos + _resolver_corner(
                 generador=generador,
+                narrador=narrador,
                 minuto=minuto,
                 atacante=atacante,
                 defensor=defensor,
@@ -620,7 +651,13 @@ def _resolver_tiro(
             equipo_id=atacante.equipo.id,
             jugador_principal_id=tirador.id,
             jugador_secundario_id=asistidor.id if asistidor else None,
-            descripcion=f"Gol de {tirador.nombre}",
+            descripcion=_descripcion_gol(
+                narrador=narrador,
+                jugador=tirador.nombre,
+                asistidor=asistidor.nombre if asistidor else None,
+                tipo_jugada=tipo_jugada,
+                minuto=minuto,
+            ),
             metadatos={"tipo_gol": tipo_jugada},
         )
         atacante.eventos.append(gol)
@@ -633,7 +670,11 @@ def _resolver_tiro(
         minuto=minuto,
         equipo_id=defensor.equipo.id,
         jugador_principal_id=portero.id,
-        descripcion=f"Parada de {portero.nombre}",
+        descripcion=_descripcion_parada(
+            narrador=narrador,
+            portero=portero.nombre,
+            equipo=defensor.equipo.nombre,
+        ),
     )
     defensor.eventos.append(parada)
     eventos.append(parada)
@@ -642,6 +683,7 @@ def _resolver_tiro(
     if not es_balon_parado and generador.random() < parametros.probabilidad_base_corner * 1.8:
         return eventos + _resolver_corner(
             generador=generador,
+            narrador=narrador,
             minuto=minuto,
             atacante=atacante,
             defensor=defensor,
@@ -655,6 +697,7 @@ def _resolver_tiro(
 def _resolver_centro(
     *,
     generador: Random,
+    narrador: NarradorPartido,
     minuto: int,
     atacante: _EstadoEquipoMutable,
     defensor: _EstadoEquipoMutable,
@@ -670,7 +713,9 @@ def _resolver_centro(
             minuto=minuto,
             equipo_id=atacante.equipo.id,
             jugador_principal_id=pasador.id,
-            descripcion=f"Centro al área de {pasador.nombre}",
+            descripcion=_descripcion_centro(
+                narrador=narrador, jugador=pasador.nombre, equipo=atacante.equipo.nombre
+            ),
         )
     ]
 
@@ -689,7 +734,9 @@ def _resolver_centro(
                 minuto=minuto,
                 equipo_id=atacante.equipo.id,
                 jugador_principal_id=rematador.id,
-                descripcion=f"{rematador.nombre} gana el duelo aéreo",
+                descripcion=_descripcion_duelo_aereo(
+                    narrador=narrador, jugador=rematador.nombre, contexto="en el área"
+                ),
             )
             eventos.append(duelo)
             atacante.eventos.append(duelo)
@@ -699,6 +746,7 @@ def _resolver_centro(
 
             return eventos + _resolver_tiro(
                 generador=generador,
+                narrador=narrador,
                 minuto=minuto,
                 atacante=atacante,
                 defensor=defensor,
@@ -721,7 +769,9 @@ def _resolver_centro(
                     minuto=minuto,
                     equipo_id=atacante.equipo.id,  # El gol sube al atacante
                     jugador_principal_id=defensor_aire.id,
-                    descripcion=f"Gol en propia puerta de {defensor_aire.nombre}",
+                    descripcion=_descripcion_autogol(
+                        narrador=narrador, jugador=defensor_aire.nombre
+                    ),
                     metadatos={"tipo_gol": "own_goal"},
                 )
                 atacante.eventos.append(autogol)
@@ -752,6 +802,7 @@ def _resolver_duelo_aereo(generador: Random, atacante: Jugador, defensor: Jugado
 def _resolver_contraataque(
     *,
     generador: Random,
+    narrador: NarradorPartido,
     minuto: int,
     atacante: _EstadoEquipoMutable,
     defensor: _EstadoEquipoMutable,
@@ -762,7 +813,7 @@ def _resolver_contraataque(
         tipo=TipoEventoPartido.CONTRAATAQUE,
         minuto=minuto,
         equipo_id=atacante.equipo.id,
-        descripcion=f"Contraataque de {atacante.equipo.nombre}",
+        descripcion=_descripcion_contraataque(narrador=narrador, equipo=atacante.equipo.nombre),
     )
     atacante.eventos.append(evento)
 
@@ -780,6 +831,7 @@ def _resolver_contraataque(
     if generador.random() < probabilidad_tiro:
         return eventos + _resolver_tiro(
             generador=generador,
+            narrador=narrador,
             minuto=minuto,
             atacante=atacante,
             defensor=defensor,
@@ -797,6 +849,7 @@ def _resolver_contraataque(
 def _resolver_falta(
     *,
     generador: Random,
+    narrador: NarradorPartido,
     minuto: int,
     atacante: _EstadoEquipoMutable,
     defensor: _EstadoEquipoMutable,
@@ -811,7 +864,11 @@ def _resolver_falta(
             minuto=minuto,
             equipo_id=defensor.equipo.id,
             jugador_principal_id=infractor.id,
-            descripcion=f"Falta cometida por {infractor.nombre}",
+            descripcion=_descripcion_falta(
+                narrador=narrador,
+                infractor=infractor.nombre,
+                zona=estado_espacial.posicion_balon.zona,
+            ),
         )
     ]
 
@@ -835,7 +892,7 @@ def _resolver_falta(
             minuto=minuto,
             equipo_id=defensor.equipo.id,
             jugador_principal_id=infractor.id,
-            descripcion=f"Tarjeta roja para {infractor.nombre}",
+            descripcion=_descripcion_tarjeta(narrador=narrador, infractor=infractor.nombre, roja=True),
         )
         eventos.append(roja)
     elif generador.random() < probabilidad_amarilla:
@@ -845,7 +902,9 @@ def _resolver_falta(
             minuto=minuto,
             equipo_id=defensor.equipo.id,
             jugador_principal_id=infractor.id,
-            descripcion=f"Tarjeta amarilla para {infractor.nombre}",
+            descripcion=_descripcion_tarjeta(
+                narrador=narrador, infractor=infractor.nombre, roja=False
+            ),
         )
         eventos.append(amarilla)
 
@@ -858,6 +917,7 @@ def _resolver_falta(
     if en_area and generador.random() < parametros.probabilidad_penalti:
         return eventos + _resolver_penalti(
             generador=generador,
+            narrador=narrador,
             minuto=minuto,
             atacante=atacante,
             defensor=defensor,
@@ -868,6 +928,7 @@ def _resolver_falta(
     if zona in (ZonaCampo.ATAQUE_CNT, ZonaCampo.MEDIO_CNT) and generador.random() < 0.30:
         return eventos + _resolver_falta_directa(
             generador=generador,
+            narrador=narrador,
             minuto=minuto,
             atacante=atacante,
             defensor=defensor,
@@ -881,6 +942,7 @@ def _resolver_falta(
 def _resolver_penalti(
     *,
     generador: Random,
+    narrador: NarradorPartido,
     minuto: int,
     atacante: _EstadoEquipoMutable,
     defensor: _EstadoEquipoMutable,
@@ -893,7 +955,9 @@ def _resolver_penalti(
         minuto=minuto,
         equipo_id=atacante.equipo.id,
         jugador_principal_id=tirador.id,
-        descripcion=f"Penalti a favor de {atacante.equipo.nombre}. Tira {tirador.nombre}",
+        descripcion=_descripcion_penalti(
+            narrador=narrador, equipo=atacante.equipo.nombre, tirador=tirador.nombre
+        ),
     )
     atacante.eventos.append(evento_penalti)
 
@@ -904,6 +968,7 @@ def _resolver_penalti(
         evento_penalti,
         *_resolver_tiro(
             generador=generador,
+            narrador=narrador,
             minuto=minuto,
             atacante=atacante,
             defensor=defensor,
@@ -921,6 +986,7 @@ def _resolver_penalti(
 def _resolver_corner(
     *,
     generador: Random,
+    narrador: NarradorPartido,
     minuto: int,
     atacante: _EstadoEquipoMutable,
     defensor: _EstadoEquipoMutable,
@@ -934,7 +1000,9 @@ def _resolver_corner(
         minuto=minuto,
         equipo_id=atacante.equipo.id,
         jugador_principal_id=pasador.id,
-        descripcion=f"Corner para {atacante.equipo.nombre}. Lanza {pasador.nombre}",
+        descripcion=_descripcion_corner(
+            narrador=narrador, equipo=atacante.equipo.nombre, lanzador=pasador.nombre
+        ),
     )
     atacante.eventos.append(evento_corner)
 
@@ -956,7 +1024,9 @@ def _resolver_corner(
                 minuto=minuto,
                 equipo_id=atacante.equipo.id,
                 jugador_principal_id=rematador.id,
-                descripcion=f"{rematador.nombre} gana el duelo aéreo tras el corner",
+                descripcion=_descripcion_duelo_aereo(
+                    narrador=narrador, jugador=rematador.nombre, contexto="tras el saque de esquina"
+                ),
             )
             atacante.eventos.append(duelo)
 
@@ -966,6 +1036,7 @@ def _resolver_corner(
                 duelo,
                 *_resolver_tiro(
                     generador=generador,
+                    narrador=narrador,
                     minuto=minuto,
                     atacante=atacante,
                     defensor=defensor,
@@ -983,6 +1054,7 @@ def _resolver_corner(
         evento_corner,
         *_resolver_centro(
             generador=generador,
+            narrador=narrador,
             minuto=minuto,
             atacante=atacante,
             defensor=defensor,
@@ -996,6 +1068,7 @@ def _resolver_corner(
 def _resolver_falta_directa(
     *,
     generador: Random,
+    narrador: NarradorPartido,
     minuto: int,
     atacante: _EstadoEquipoMutable,
     defensor: _EstadoEquipoMutable,
@@ -1008,7 +1081,9 @@ def _resolver_falta_directa(
         minuto=minuto,
         equipo_id=atacante.equipo.id,
         jugador_principal_id=tirador.id,
-        descripcion=f"Falta directa peligrosa para {atacante.equipo.nombre}",
+        descripcion=_descripcion_tiro_libre(
+            narrador=narrador, equipo=atacante.equipo.nombre, tirador=tirador.nombre
+        ),
     )
     atacante.eventos.append(evento_fk)
 
@@ -1016,6 +1091,7 @@ def _resolver_falta_directa(
         evento_fk,
         *_resolver_tiro(
             generador=generador,
+            narrador=narrador,
             minuto=minuto,
             atacante=atacante,
             defensor=defensor,
@@ -1028,6 +1104,193 @@ def _resolver_falta_directa(
             es_balon_parado=True,
         ),
     ]
+
+
+def _descripcion_recuperacion(
+    *, narrador: NarradorPartido, equipo: str, causa: str, zona: ZonaCampo
+) -> str:
+    return narrador.elegir(
+        "recuperacion",
+        (
+            f"{equipo} recupera tras {causa.lower()} en {narrador.zona(zona)}",
+            f"Se rompe la posesión por {causa.lower()}: vuelve a mandar {equipo}",
+            f"Buen robo de {equipo}; nace en {narrador.zona(zona)}",
+        ),
+    )
+
+
+def _descripcion_posesion(
+    *, narrador: NarradorPartido, equipo: str, jugador: str, zona: ZonaCampo
+) -> str:
+    return narrador.elegir(
+        "posesion",
+        (
+            f"{equipo} pausa y mueve con {jugador} desde {narrador.zona(zona)}",
+            f"{jugador} ordena una circulación larga de {equipo}",
+            f"{equipo} administra la pelota y busca huecos",
+        ),
+    )
+
+
+def _descripcion_tiro(
+    *, narrador: NarradorPartido, jugador: str, equipo: str, minuto: int, zona: ZonaCampo
+) -> str:
+    cierre = "en transición" if minuto > 75 else "en jugada elaborada"
+    return narrador.elegir(
+        "tiro",
+        (
+            f"Disparo de {jugador} para {equipo} {cierre}",
+            f"{jugador} prueba desde {narrador.zona(zona)}",
+            f"Remate de {jugador}; {equipo} acelera",
+        ),
+    )
+
+
+def _descripcion_gol(
+    *,
+    narrador: NarradorPartido,
+    jugador: str,
+    asistidor: str | None,
+    tipo_jugada: str,
+    minuto: int,
+) -> str:
+    tramo = "en el tramo final" if minuto >= 75 else "en pleno partido"
+    if asistidor:
+        return narrador.elegir(
+            "gol_asistido",
+            (
+                f"¡Gol de {jugador}! Asistencia de {asistidor} {tramo}",
+                f"Definición de {jugador} tras pase de {asistidor}",
+                f"{jugador} firma el gol después de la conexión con {asistidor}",
+            ),
+        )
+    return narrador.elegir(
+        "gol",
+        (
+            f"¡Gol de {jugador}! Acción de {tipo_jugada}",
+            f"{jugador} rompe la red y culmina la jugada",
+            f"Golazo de {jugador}, definición limpia",
+        ),
+    )
+
+
+def _descripcion_parada(*, narrador: NarradorPartido, portero: str, equipo: str) -> str:
+    return narrador.elegir(
+        "parada",
+        (
+            f"Paradón de {portero} para sostener a {equipo}",
+            f"{portero} bloca el remate y salva a los suyos",
+            f"Gran reacción de {portero} bajo palos",
+        ),
+    )
+
+
+def _descripcion_centro(*, narrador: NarradorPartido, jugador: str, equipo: str) -> str:
+    return narrador.elegir(
+        "centro",
+        (
+            f"{jugador} carga el área con un centro de {equipo}",
+            f"Centro tenso de {jugador} buscando rematador",
+            f"{equipo} abre a banda y {jugador} pone el envío",
+        ),
+    )
+
+
+def _descripcion_duelo_aereo(*, narrador: NarradorPartido, jugador: str, contexto: str) -> str:
+    return narrador.elegir(
+        "duelo_aereo",
+        (
+            f"{jugador} gana por arriba {contexto}",
+            f"Salto imperial de {jugador} {contexto}",
+            f"{jugador} se impone en el juego aéreo {contexto}",
+        ),
+    )
+
+
+def _descripcion_autogol(*, narrador: NarradorPartido, jugador: str) -> str:
+    return narrador.elegir(
+        "autogol",
+        (
+            f"Gol en propia de {jugador}; jugada desafortunada",
+            f"Desvío fatal de {jugador} hacia su portería",
+            f"{jugador} marca en propia puerta en un rebote cruel",
+        ),
+    )
+
+
+def _descripcion_contraataque(*, narrador: NarradorPartido, equipo: str) -> str:
+    return narrador.elegir(
+        "contraataque",
+        (
+            f"{equipo} sale lanzado al contraataque",
+            f"Transición vertiginosa de {equipo}",
+            f"{equipo} roba y corre con muchos metros por delante",
+        ),
+    )
+
+
+def _descripcion_falta(*, narrador: NarradorPartido, infractor: str, zona: ZonaCampo) -> str:
+    return narrador.elegir(
+        "falta",
+        (
+            f"Falta de {infractor} en {narrador.zona(zona)}",
+            f"{infractor} llega tarde y derriba al rival",
+            f"Contacto duro de {infractor}; el árbitro no duda",
+        ),
+    )
+
+
+def _descripcion_tarjeta(*, narrador: NarradorPartido, infractor: str, roja: bool) -> str:
+    if roja:
+        return narrador.elegir(
+            "tarjeta_roja",
+            (
+                f"Roja directa para {infractor}",
+                f"{infractor} se va expulsado",
+                f"El colegiado muestra roja a {infractor}",
+            ),
+        )
+    return narrador.elegir(
+        "tarjeta_amarilla",
+        (
+            f"Amarilla para {infractor}",
+            f"{infractor} entra en la libreta del árbitro",
+            f"Cartulina para {infractor} por la acción anterior",
+        ),
+    )
+
+
+def _descripcion_penalti(*, narrador: NarradorPartido, equipo: str, tirador: str) -> str:
+    return narrador.elegir(
+        "penalti",
+        (
+            f"¡Penalti para {equipo}! Va {tirador}",
+            f"Pena máxima para {equipo}; se prepara {tirador}",
+            f"El árbitro señala el punto fatídico para {equipo}",
+        ),
+    )
+
+
+def _descripcion_corner(*, narrador: NarradorPartido, equipo: str, lanzador: str) -> str:
+    return narrador.elegir(
+        "corner",
+        (
+            f"Corner para {equipo}, lo ejecuta {lanzador}",
+            f"Saque de esquina de {equipo}; balón al área de {lanzador}",
+            f"{equipo} fuerza el córner y {lanzador} se acerca al banderín",
+        ),
+    )
+
+
+def _descripcion_tiro_libre(*, narrador: NarradorPartido, equipo: str, tirador: str) -> str:
+    return narrador.elegir(
+        "tiro_libre",
+        (
+            f"Falta frontal para {equipo}; preparado {tirador}",
+            f"Tiro libre peligroso de {equipo} con {tirador}",
+            f"{tirador} acomoda el balón para la falta directa",
+        ),
+    )
 
 
 def _construir_estadisticas(
