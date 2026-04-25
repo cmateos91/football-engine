@@ -97,6 +97,7 @@ def simular_partido_baseline(
 
     # Sistema de transicion de posesion
     ultimo_poseedor_id = None
+    ultimo_minuto_recuperacion = -10
 
     for indice in range(total_posesiones):
         minuto = min(95, 1 + int((indice / max(1, total_posesiones)) * 95))
@@ -121,7 +122,12 @@ def simular_partido_baseline(
             atacante, defensor = estado_visitante, estado_local
 
         # Si hay cambio de poseedor y no es el primer evento, narrar la transicion
-        if ultimo_poseedor_id is not None and atacante.equipo.id != ultimo_poseedor_id:
+        if (
+            ultimo_poseedor_id is not None
+            and atacante.equipo.id != ultimo_poseedor_id
+            and minuto - ultimo_minuto_recuperacion >= 2
+            and generador.random() < 0.72
+        ):
             # Buscar razon de la perdida (simplificado por ahora)
             tipo_perdida = generador.choice(["Interceptacion", "Mal pase", "Presion rival"])
             transicion = EventoPartido(
@@ -137,6 +143,7 @@ def simular_partido_baseline(
                 metadatos={"causa": tipo_perdida},
             )
             eventos.append(transicion)
+            ultimo_minuto_recuperacion = minuto
 
         ultimo_poseedor_id = atacante.equipo.id
         atacante.posesiones += 1
@@ -224,6 +231,7 @@ def simular_partido_iterativo(
     )
 
     ultimo_poseedor_id = None
+    ultimo_minuto_recuperacion = -10
 
     for indice in range(total_posesiones):
         minuto = min(95, 1 + int((indice / max(1, total_posesiones)) * 95))
@@ -257,7 +265,12 @@ def simular_partido_iterativo(
             atacante, defensor = estado_visitante, estado_local
 
         # Transicion explicita si hay cambio de equipo
-        if ultimo_poseedor_id is not None and atacante.equipo.id != ultimo_poseedor_id:
+        if (
+            ultimo_poseedor_id is not None
+            and atacante.equipo.id != ultimo_poseedor_id
+            and minuto - ultimo_minuto_recuperacion >= 2
+            and generador.random() < 0.72
+        ):
             tipo_p = generador.choice(["Interceptacion", "Mal pase", "Presion rival"])
             transicion = EventoPartido(
                 tipo=TipoEventoPartido.RECUPERACION,
@@ -280,6 +293,7 @@ def simular_partido_iterativo(
                 goles_local=estado_local.goles,
                 goles_visitante=estado_visitante.goles,
             )
+            ultimo_minuto_recuperacion = minuto
 
         ultimo_poseedor_id = atacante.equipo.id
         atacante.posesiones += 1
