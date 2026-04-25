@@ -71,12 +71,22 @@ def narrar_evento(evento, local_id, nombre_local, nombre_visita):
         emoji = "🏹 "
     elif evento.tipo == TipoEventoPartido.DUELO_AEREO:
         emoji = "✈️  "
+    elif evento.tipo == TipoEventoPartido.PENALTI:
+        emoji = "🎯 "
+        color = Colores.AMARILLO + Colores.BOLD
+    elif evento.tipo == TipoEventoPartido.TIRO_LIBRE:
+        emoji = "🧱 "
+    elif evento.tipo == TipoEventoPartido.CORNER:
+        emoji = "🚩 "
+    elif evento.tipo == TipoEventoPartido.PARADA:
+        emoji = "🧤 "
     elif evento.tipo == TipoEventoPartido.RECUPERACION:
         emoji = "🔄 "
-        # Transformar "Perdida de balon (X). Recupera Y" en "Recuperación de balón (X)"
-        descripcion = descripcion.replace("Perdida de balon", "Recuperación de balón")
-        if ". Recupera" in descripcion:
-            descripcion = descripcion.split(". Recupera")[0]
+
+    if evento.tipo == TipoEventoPartido.TIRO and isinstance(evento.metadatos, dict):
+        xg = evento.metadatos.get("xg")
+        if isinstance(xg, float):
+            descripcion = f"{descripcion} (xG {xg:.2f})"
 
     # Formatear el mensaje
     equipo_str = (
