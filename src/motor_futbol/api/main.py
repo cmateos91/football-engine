@@ -142,6 +142,8 @@ async def match_websocket(websocket: WebSocket, sim_id: str):
     marcador_visita = 0
     posesiones_local = 0
     total_iteraciones = 0
+    ultima_clave_evento: tuple[int | None, str, str] | None = None
+    ultimo_minuto_por_tipo: dict[str, int] = {}
     
     try:
         for estado in simulador:
@@ -152,6 +154,20 @@ async def match_websocket(websocket: WebSocket, sim_id: str):
             if estado.evento_actual:
                 # Omitir pases para el feed en vivo (highlights)
                 if estado.evento_actual.tipo == TipoEventoPartido.PASE:
+                    continue
+
+                clave = (
+                    estado.evento_actual.equipo_id,
+                    estado.evento_actual.tipo.name,
+                    estado.evento_actual.descripcion or "",
+                )
+                minuto_ultimo_tipo = ultimo_minuto_por_tipo.get(estado.evento_actual.tipo.name, -99)
+                if clave == ultima_clave_evento:
+                    continue
+                if (
+                    estado.evento_actual.tipo == TipoEventoPartido.RECUPERACION
+                    and estado.minuto - minuto_ultimo_tipo < 2
+                ):
                     continue
                 
                 if estado.evento_actual.tipo == TipoEventoPartido.GOL:
@@ -177,6 +193,8 @@ async def match_websocket(websocket: WebSocket, sim_id: str):
                 }
                 
                 await websocket.send_json(msg)
+                ultima_clave_evento = clave
+                ultimo_minuto_por_tipo[estado.evento_actual.tipo.name] = estado.minuto
                 
                 # Velocidad de narración (ajustable)
                 await asyncio.sleep(0.8)
