@@ -52,7 +52,7 @@ Para un motor que necesita simulación masiva, calibración estadística, compar
 
 ## Estrategia general del proyecto
 
-El proyecto se divide en 8 grandes fases. Cada fase debe dejar un sistema usable, testeado y medible antes de pasar a la siguiente.
+El proyecto se divide en 12 grandes fases. Cada fase debe dejar un sistema usable, testeado y medible antes de pasar a la siguiente.
 
 ## Fase 0. Fundación del proyecto
 
@@ -462,28 +462,404 @@ Si la versión event-driven ya no puede capturar la realidad con precisión sufi
 
 El partido produce narrativas plausibles además de números plausibles.
 
-## Fase 8. Capa espacial opcional
+## Fase 8. Capa espacial del partido
 
 ### Objetivo
 
-Evaluar si merece la pena introducir una capa espacial simplificada para mejorar realismo en ciertos eventos.
+Introducir representación espacial del partido para modelar eventos que dependen de la posición del balón y los jugadores en el campo.
 
-### Importante
+### Por qué ahora
 
-Esta fase es opcional. Solo se abre si hay evidencia de que el motor actual falla en problemas que no pueden resolverse con un modelo de eventos/contexto.
+El motor actual funciona bien a nivel agregado para métricas globales (goles, posesión, tiros). Pero hay aspectos que no puede capturar:
 
-### Casos que sí justificarían esta fase
+- Un passe desde campo propio vs cerca del área tiene dificultad diferente
+- Los contraataques son más efectivos cuando se capturan en campo rival
+- Los córners solo ocurren cerca del área
+- La presión alta solo tiene efecto en campo contrario
 
-- mala modelización sistemática de centros;
-- mala relación entre posesión territorial y producción ofensiva;
-- comportamientos irreales en presión alta o bloque bajo;
-- reparto deficiente de tiros por zonas.
+### Arquitectura propuesta
 
-### Casos que no la justifican
+#### Representación del campo
 
-- ganas de hacer algo más complejo;
-- sensación subjetiva de "sería más realista";
-- problemas que realmente son de calibración y no de representación.
+```
+Campo dividido en 3 zonas longitudinales:
+- ZONA_DEFENSA: 0-33 (x)
+- ZONA_MEDIOCAMPO: 34-66 (x)  
+- ZONA_ATAQUE: 67-100 (x)
+
+Eje Y: 0-100 (banda a banda)
+
+Coordenadas del balón: (x, y) donde x∈[0,100], y∈[0,100]
+```
+
+#### Modelo de estado espacial
+
+```python
+@dataclass
+class EstadoEspacialPartido:
+    """Estado espacial mutable durante la simulación."""
+    
+    posicion_balon: tuple[float, float] = (50.0, 50.0)
+    posesion: int | None = None  # id del equipo con posesión
+    zona_actual: str = "MEDIOCAMPO"
+    ultimo_pase: tuple[float, float] | None = None
+    tiempo_en_zona: dict[str, float] = field(default_factory=dict)
+    contracapturas: int = 0
+```
+
+#### Transiciones entre zonas
+
+- **Saquetiro de inicio**: (50, 50) → posseedor aleatorio
+- **Pase progresivo**: probabilidad de avanzar zona basada en calidad de pase
+- **Pérdida**: transition a otro equipo, vuelve a zona media
+- **Tiro**: siempre desde ZONA_ATAQUE
+- **Corner**: siempre desde ZONA_ATAQUE en banda
+
+### Variables a introducir
+
+1. **Coordenadas del balón** - posición (x, y) en el campo
+2. **Zona del campo** - defensa/medio/ataque
+3. **Tiempo en cada zona** -para medir dominio territorial
+4. **Evento de transición** - cambios de zona con probabilidad
+5. **Dificultad contextual** - un passe en zona defensiva es más seguro
+
+### Métricas nuevas a validar
+
+- Posesión territorial: % tiempo en cada zona
+- Progresión: cuántas transiciones zona defensa → ataque
+- Efficiency de passe según zona: éxito en campo propio vs rival
+- Concentración de tiros: 80%+ deben ser desde zona ataque
+- Concentración de córners: 100% desde ataque
+
+### Implementación por etapas
+
+#### Etapa 8.1: Fundación espacial
+
+- Definir estructuras de coordenadas y zonas
+- Añadir estado espacial al contexto del partido
+- Implementar transiciones básicas de zona
+
+#### Etapa 8.2: Pases con ubicación
+
+- Añadir probabilidad de progresión según calidad de pase
+- Dificultar passes retrospectivos hacia atrás
+- Modelar retención en zona propia
+
+#### Etapa 8.3: Tiros contextuales
+
+- Solo permitir tiros desde ZONA_ATAQUE
+- Añadir bonificador por proximidad a portería
+- Distinguir tiro desde zona media vs área
+
+#### Etapa 8.4: Contraespacios
+
+- Contracaptura más probable en campo contrario
+- Transiciones rápidas defensa → ataque
+- Métricas de contraespacio territorio
+
+### Tests obligatorios de salida
+
+- un passe tiene diferentes probabilidades según zona de origen
+- los tiros ocurren exclusivamente desde zona de ataque
+- los córners solo se lanzan desde zona de ataque
+- laposesión territorial refleja diferencias de equipo
+- los contraataques progresan más rápido a zona de ataque
+
+### Criterio para cerrar fase
+
+El motor produce métricas de posición además de globales, y los eventos tienen ubicación coherente con las reglas del fútbol.
+
+## Fase 9. Modelo de expected goals (xG) y calidad de finalización
+
+### Objetivo
+
+Reemplazar la probabilidad de gol plana por un modelo de xG basado en atributos contextuales y espaciales, para que el motor distinga entre un tiro bien ejecutado desde el área pequeña y un remate desde 35 metros.
+
+### Por qué ahora
+
+Con la capa espacial de la Fase 8, el balón ya tiene ubicación. El siguiente paso natural es que esa ubicación, junto con el perfil del rematador y el contexto defensivo, determine la calidad real del disparo. Sin esto, la relación entre tiros y goles es mecánica e independiente de quien y desde donde dispara.
+
+### Variables que entran al modelo de xG
+
+- distancia al centro de la portería;
+- ángulo de tiro;
+- zona de disparo (área pequeña, área grande, frontal, lateral, lejana);
+- tipo de acción previa (centro, pase de ruptura, contraataque, balón parado);
+- pie de contacto (dominante vs no dominante);
+- atributos del rematador: finalización, compostura, potencia;
+- presión defensiva en el momento del disparo;
+- si el disparo es de cabeza;
+- si hay portero posicionado o en movimiento (implícito por zona y contexto);
+- fatiga acumulada del rematador.
+
+### Métricas de calibración
+
+- xG medio por tiro vs datos reales de LaLiga (~0.10-0.12 por tiro);
+- correlación xG acumulado vs goles reales por equipo en simulación de temporada;
+- distribución de goles por tipo de acción (centro, contraataque, balón parado, juego abierto);
+- porcentaje de goles de cabeza (~20-25% en LaLiga);
+- tasa de conversión por zona de disparo.
+
+### Entregables
+
+- modelo de xG explicable con peso por variable;
+- calculadora de xG por disparo con log de factores;
+- separación entre xG por partido y goles reales (varianza);
+- comparador automático xG simulado vs xG histórico LaLiga.
+
+### Tests obligatorios de salida
+
+- un tiro desde el punto de penalti de un delantero élite tiene xG ≥ 0.70;
+- un remate de cabeza desde 20 metros tiene xG ≤ 0.05;
+- un jugador con alta finalización genera mayor xG en igualdad de posición;
+- el xG acumulado por equipo en 1000 partidos está correlacionado con puntos;
+- subir la compostura del rematador no empeora el xG en ningún escenario;
+- la suma de goles simulados converge al xG total con suficientes muestras (LGN);
+- property-based: xG ∈ [0, 1] para cualquier combinación de inputs válidos.
+
+### Criterio para cerrar fase
+
+El motor produce xG por disparo explicable y calibrado, y la relación entre xG acumulado y goles reales por equipo se mantiene dentro de la varianza esperada en LaLiga.
+
+---
+
+## Fase 10. Simulación de temporada y competición
+
+### Objetivo
+
+Escalar el motor desde partidos individuales hasta temporadas completas reproducibles, con tabla de clasificación, estadísticas individuales acumuladas, rotaciones y efectos de calendario.
+
+### Por qué ahora
+
+El motor ya produce partidos realistas. Para validar que los equipos se comportan de forma coherente a lo largo de 38 jornadas y que el campeón no es aleatorio, hay que simular temporadas enteras y comparar con datos históricos de LaLiga.
+
+### Qué debe simular esta fase
+
+- generación automática del calendario de LaLiga (38 jornadas, local/visitante simétrico);
+- rotaciones de alineación basadas en fatiga acumulada y lesiones simples;
+- degradación de atributos por fatiga de temporada;
+- estadísticas acumuladas por jugador (goles, asistencias, tiros, minutos, xG);
+- tabla de clasificación con puntos, diferencia de gol, goles a favor y en contra;
+- estadísticas de rendimiento de local vs visitante por equipo a lo largo de la temporada.
+
+### Métricas de calibración
+
+- % de veces que el favorito (por calidad de plantilla) gana la liga en 1000 temporadas;
+- distribución de puntos del campeón (media ~85-90 en LaLiga);
+- distribución de puntos del descenso (~30-35);
+- diferencia entre el mejor y peor equipo en goles a favor;
+- coeficiente de concentración de goles por jugador (los 5 máximos goleadores vs el resto);
+- correlación entre calidad de plantilla y posición final.
+
+### Entregables
+
+- generador de calendario de temporada;
+- acumulador de estadísticas por jugador y equipo;
+- sistema de rotación de alineaciones;
+- exportador de tabla de clasificación y estadísticas al final de temporada;
+- comparador automático de distribución de puntos vs LaLiga histórica.
+
+### Tests obligatorios de salida
+
+- el campeón de 1000 temporadas no es siempre el mismo equipo, pero el favorito gana con frecuencia estadísticamente superior;
+- los puntos del campeón caen dentro del rango histórico de LaLiga;
+- ningún equipo acumula más de 38 victorias en 38 partidos;
+- las estadísticas individuales de un jugador lesionado reflejan menos minutos;
+- el calendario garantiza exactamente 19 partidos de local y 19 de visitante por equipo;
+- reproducibilidad: la misma seed produce la misma tabla final;
+- property-based: la suma de puntos de todos los equipos siempre es consistente con el número de partidos jugados.
+
+### Criterio para cerrar fase
+
+Podemos simular 1000 temporadas completas de LaLiga y comparar la distribución de puntos, goleadores y posiciones finales contra datos históricos dentro de tolerancias definidas.
+
+---
+
+## Fase 11. Capa de observabilidad, explicabilidad y API
+
+### Objetivo
+
+Hacer que el motor sea consultable desde fuera, que cada simulación pueda auditarse evento por evento, y que el sistema pueda responder preguntas causales de forma programática.
+
+### Por qué ahora
+
+El motor es cada vez más complejo. Sin una capa de observabilidad, depurar un partido extraño o entender por qué un equipo rinde muy por debajo de lo esperado requiere leer código. Esta fase convierte el motor en un sistema explicable por diseño.
+
+### Capacidades a desarrollar
+
+#### Trazabilidad de eventos
+
+- log estructurado de cada evento con sus inputs, probabilidades y resultado;
+- visualización textual del partido minuto a minuto con causas;
+- acceso al árbol de decisión de cada gol: "¿qué factores llevaron a este gol?".
+
+#### Motor de preguntas causales
+
+- "¿por qué este equipo generó tan poco peligro en este partido?";
+- "¿qué atributo tuvo mayor impacto en el resultado?";
+- "¿qué habría cambiado si el delantero tuviera 10 puntos más de finalización?".
+
+#### API REST del simulador
+
+- endpoint de simulación de partido individual;
+- endpoint de simulación de temporada;
+- endpoint de calibración bajo demanda;
+- endpoint de scorecard de realismo.
+
+#### Sistema de alertas de regresión
+
+- alerta automática si una nueva versión empeora el scorecard global en más de un umbral configurado;
+- comparación de distribuciones entre versiones con p-value.
+
+### Entregables
+
+- log estructurado en JSON por simulación;
+- módulo de consulta causal sobre el log;
+- API REST con FastAPI o equivalente;
+- documentación de contratos de la API;
+- sistema de alertas de regresión automático.
+
+### Tests obligatorios de salida
+
+- el log de un partido contiene al menos un registro por evento con sus factores explicativos;
+- una pregunta causal sobre un gol devuelve los tres factores con mayor peso;
+- el endpoint de simulación devuelve un partido válido en menos de 200ms;
+- la alerta de regresión se dispara si el scorecard de goles baja del umbral definido;
+- property-based: el log de cualquier partido válido es parseble y no contiene estados contradictorios.
+
+### Criterio para cerrar fase
+
+Un usuario externo puede simular un partido, leer el log estructurado, hacer preguntas causales y recibir respuestas explicables sin necesidad de acceder al código del motor.
+
+---
+
+## Fase 12. Calibración automatizada y optimización de parámetros
+
+### Objetivo
+
+Sustituir el ajuste manual de parámetros del motor por un sistema de calibración automática que minimiza la distancia entre las distribuciones simuladas y las distribuciones reales de LaLiga.
+
+### Por qué ahora
+
+Llegados a este punto, el motor tiene decenas de parámetros: pesos de atributos, modificadores tácticos, curvas de fatiga, multiplicadores de xG, probabilidades base de evento. Ajustarlos a mano es ineficiente y no garantiza un óptimo global. Esta fase convierte la calibración en un proceso científico y repetible.
+
+### Estrategia de calibración
+
+#### Función objetivo
+
+Distancia total entre distribuciones simuladas y reales, ponderada por relevancia:
+
+- KL divergence o Wasserstein distance en goles, tiros, posesión;
+- error cuadrático medio en métricas agregadas por equipo;
+- error en correlación xG vs goles reales;
+- penalización por invariantes rotas.
+
+#### Métodos de optimización a considerar
+
+- búsqueda aleatoria con constraints (primera iteración);
+- optimización bayesiana (segunda iteración, más eficiente);
+- algoritmos evolutivos si el espacio es no diferenciable;
+- grid search limitado para parámetros discretos o de baja dimensión.
+
+#### Validación cruzada temporal
+
+- calibrar sobre temporadas pasadas (por ejemplo, 2019-2022);
+- validar sobre temporadas recientes no vistas (2023-2024);
+- detectar sobreajuste temporal.
+
+### Entregables
+
+- módulo de calibración automatizada con interfaz configurable;
+- registro de cada experimento de calibración con parámetros y scores;
+- comparador de versiones calibradas;
+- informe automático de calibración con gráficas de convergencia;
+- sistema de congelación de parámetros validados.
+
+### Tests obligatorios de salida
+
+- la calibración automática con seed fija produce el mismo resultado en dos ejecuciones;
+- los parámetros calibrados pasan todos los invariantes del motor;
+- el scorecard de una versión calibrada es estrictamente mejor o igual que la versión anterior;
+- la calibración detecta y rechaza configuraciones que rompen invariantes aunque mejoren métricas locales;
+- el proceso de calibración completo termina en tiempo acotado definido en la configuración;
+- property-based: ningún parámetro calibrado sale de sus rangos válidos declarados.
+
+### Criterio para cerrar fase
+
+El motor puede recalibrarse automáticamente ante nuevos datos de LaLiga sin intervención manual, produciendo una versión nueva que mejora o mantiene el scorecard global y supera la validación cruzada temporal.
+
+---
+
+## Artefactos de datos de calibración
+
+### Origen
+
+Durante la fase de planificación del proyecto se construyó un conjunto de datos de referencia
+a partir de estadísticas reales de LaLiga (temporada 2024-25 principal + histórico 2019-25).
+Este conjunto vive en dos archivos complementarios dentro del repositorio:
+
+```
+docs/
+  calibration/
+    LaLiga_Stats_Calibracion_2024-25.xlsx   ← fuente de datos visual, exploración humana
+    CALIBRATION_TARGETS.md                  ← fuente autoritativa para el código y los tests
+```
+
+### Rol de cada archivo
+
+#### `LaLiga_Stats_Calibracion_2024-25.xlsx`
+
+Archivo Excel de consulta humana con siete hojas:
+
+- **Resumen General** — 20 métricas clave por partido con valor real, rango observado y tolerancia.
+- **Clasificación 2024-25** — tabla final oficial de los 20 equipos con estadísticas derivadas.
+- **Stats por Equipo** — xG estimado, posesión, top scorer y rendimiento relativo por equipo.
+- **Goleadores Top 20** — ranking Pichichi con estadísticas de finalización.
+- **xG y Modelo Disparo** — xG base por zona de disparo y tabla de modificadores multiplicativos.
+- **Scorecard Calibración** — plantilla para registrar manualmente el valor simulado vs el real.
+- **Histórico Multi-Temporada** — datos de las 6 temporadas 2019-25 para calibración temporal.
+
+Este archivo se usa para exploración, discusión y presentación. No lo lee el código directamente.
+
+#### `CALIBRATION_TARGETS.md`
+
+Documento estructurado con todos los valores de referencia embebidos como bloques Python válidos.
+Lo importa `src/calibration/targets.py` y lo consumen los tests estadísticos.
+
+Contiene seis secciones de datos:
+
+- `MATCH_TARGETS` — métricas por partido (goles, tiros, xG, posesión, eventos, resultados).
+- `GOAL_TIMING_TARGETS` — distribución de goles por tramo temporal de 15 minutos.
+- `GOAL_TYPE_TARGETS` — fracción de goles por tipo de acción (juego abierto, penalti, córner…).
+- `XG_ZONE_TARGETS` — xG medio y distribución por zona de disparo (10 zonas).
+- `XG_MODIFIERS` — modificadores multiplicativos del xG base (pie, presión, fatiga, compostura).
+- `SEASON_TARGETS` — puntos del campeón, descenso, goles totales, distribución de equipos.
+- `HARD_INVARIANTS` — 13 invariantes duros que deben cumplirse en toda simulación.
+- `HISTORICAL_SEASONS` — datos de las 6 temporadas para validación cruzada temporal.
+
+### Relación con las fases del proyecto
+
+| Sección de datos | Primera fase que la consume | Tests asociados |
+|---|---|---|
+| `MATCH_TARGETS` (goles, resultados) | **Fase 3** — Baseline | `tests/statistical/test_match_distributions.py` |
+| `MATCH_TARGETS` (tiros, SOT, xG) | **Fase 4** — Marco de calibración | `tests/statistical/test_match_distributions.py` |
+| `MATCH_TARGETS` (posesión, eventos) | **Fase 5** — Atributos reales | `tests/statistical/test_match_distributions.py` |
+| `GOAL_TYPE_TARGETS` | **Fase 7** — Eventos avanzado | `tests/statistical/test_event_distributions.py` |
+| `GOAL_TIMING_TARGETS` | **Fase 7** — Eventos avanzado | `tests/statistical/test_event_distributions.py` |
+| `XG_ZONE_TARGETS`, `XG_MODIFIERS` | **Fase 9** — Modelo xG | `tests/statistical/test_xg_model.py` |
+| `SEASON_TARGETS` | **Fase 10** — Temporada | `tests/statistical/test_season_distributions.py` |
+| `HARD_INVARIANTS` | **Fase 3** en adelante | `tests/unit/test_invariants.py` |
+| `HISTORICAL_SEASONS` | **Fase 12** — Calibración automática | `tests/statistical/test_temporal_validation.py` |
+
+### Reglas de mantenimiento
+
+1. **El `.md` es la fuente autoritativa para el código.** Si hay discrepancia entre el `.xlsx` y el `.md`, el `.md` manda.
+2. **Los targets no se tocan para que pasen los tests.** Si el motor no pasa un target CRÍTICO, se abre una tarea de calibración documentada. No se relaja la tolerancia.
+3. **Actualización anual.** Al finalizar cada temporada de LaLiga se actualiza el `.xlsx` con los nuevos datos, se revisan los valores en el `.md` y se registra la versión en el header del archivo.
+4. **Separación de responsabilidades.** `CALIBRATION_TARGETS.md` contiene los targets reales. Los parámetros internos del motor (multiplicadores, curvas, probabilidades base) viven en `src/simulation/config/` y son los que cambia la Fase 12, nunca los targets.
+5. **Los targets históricos nunca se eliminan.** Se marcan como `deprecated` si una temporada queda fuera de la ventana de calibración, pero permanecen para trazabilidad.
+
+---
 
 ## Sistema de testing del proyecto
 
@@ -559,45 +935,91 @@ Construir la primera suite de validación contra estadísticas reales de LaLiga.
 
 Introducir la primera capa real de atributos de jugador y medir impacto.
 
-## Riesgos principales
+---
 
-1. Usar demasiados stats demasiado pronto.
-   Riesgo: sobreajuste, ruido y un motor imposible de calibrar.
+## Estado Actual del Proyecto (Abril 2026)
 
-2. Diseñar un motor hipergranular sin baseline estable.
-   Riesgo: mucha complejidad y poca capacidad de validación.
+Tras la revisión exhaustiva del repositorio, se ha verificado el cumplimiento de las fases según el plan original. A continuación se detalla el grado de implementación:
 
-3. Confundir realismo narrativo con realismo estadístico.
-   Riesgo: partidos "bonitos" pero irreales en volumen y distribución.
+### ✅ Fases Completadas (100%)
 
-4. Depender demasiado de una sola temporada o una sola fuente.
-   Riesgo: sesgo de calibración.
+- **Fase 0. Fundación del Proyecto:** Infraestructura de calidad (`pytest`, `mypy`, `ruff`), estructura de carpetas y entorno reproducible.
+- **Fase 1. Modelo de Dominio Puro:** Entidades `Team`, `Player`, `Alineacion`, `Tactica` y `Atributos` totalmente definidas y validadas.
+- **Fase 2. Capa de Datos:** Repositorios funcionales, mapeo desde esquemas reales y sistema de carga desde MySQL operativo.
+- **Fase 3. Baseline del Simulador:** Motor basado en posesiones con salida estructurada y determinismo por semilla.
+- **Fase 4. Marco de Calibración:** Definición de `CALIBRATION_TARGETS.md` y suite de tests estadísticos iniciales.
+- **Fase 5. Atributos Reales:** Activación de stats técnicos y físicos que influyen directamente en las probabilidades del motor.
+- **Fase 6. Táctica y Contexto:** Influencia de mentalidad, presión, ritmo y agresividad en el desarrollo del partido.
+- **Fase 8. Capa Espacial:** Implementación de zonas del campo, coordenadas del balón y transiciones espaciales.
+- **Fase 9. Modelo de xG:** Cálculo de probabilidad de gol basado en ubicación, ángulo y calidad del rematador.
 
-5. No separar datos crudos, features derivadas y parámetros calibrados.
-   Riesgo: caos técnico y poca trazabilidad.
+### ✅ Entregables Completados (Milestones)
 
-## Definición de éxito de la primera etapa del proyecto
+- **P1:** Targets de calibración completos en `src/motor_futbol/calibracion/targets.py` (8 secciones: MATCH_TARGETS, GOAL_TIMING_TARGETS, GOAL_TYPE_TARGETS, XG_ZONE_TARGETS, XG_MODIFIERS, XG_HARD_BOUNDS, SEASON_TARGETS, HISTORICAL_SEASONS, HISTORICAL_RANGES, HARD_INVARIANTS)
+- **P2:** Tests estadísticos completos alineados a MATCH_TARGETS (87 tests pasando)
 
-La primera etapa estará bien hecha si conseguimos todo esto:
+### ⚠️ Fases en Progreso o Parciales
 
-- cargar equipos y jugadores reales desde MySQL;
-- simular partidos reproducibles;
-- ejecutar miles de simulaciones;
-- comparar sus resultados con estadísticas reales de LaLiga;
-- detectar automáticamente cuándo el motor se aleja de la realidad;
-- tener una base lo bastante limpia como para añadir complejidad sin romperlo todo.
+- **Fase 7. Eventos Avanzado:** 
+    - *Cumplido:* Contraataques, tiros y faltas están modelados.
+    - *Pendiente:* Secuencias complejas de centros, duelos aéreos específicos y errores en salida de balón detallados.
+- **Fase 10. Simulación de Temporada:**
+    - *Cumplido:* Generación de calendario de 38 jornadas, tabla de clasificación y actualización de estadísticas para ambos equipos.
+    - *Pendiente:* Acumulación de estadísticas individuales de jugadores, sistema de lesiones y fatiga de larga duración.
+- **Fase 11. Observabilidad y API:**
+    - *Cumplido:* API REST operativa, logs estructurados y **narración minuto a minuto en tiempo real** (script `narrar_partido.py`).
+    - *Pendiente:* Sistema automático de alertas de regresión que compare versiones.
+- **Fase 12. Calibración Automatizada:**
+    - *Cumplido:* Framework de medición contra metas de LaLiga.
+    - *Pendiente:* Implementación de optimización bayesiana para el ajuste fino de parámetros.
 
-## Siguiente documento recomendado
+### 🚀 Próximos Pasos Inmediatos (P4 - Calibración del Motor)
 
-Después de este roadmap, el siguiente documento a crear debe ser:
+**P4 - Calibración del Motor:** Los siguientes 18 tests de calibración fallan con desviaciones significativas respecto a los targets de LaLiga. Esta es la deuda activa que debe resolverse antes de continuar con nuevas funcionalidades.
 
-`docs/ARCHITECTURE.md`
+#### Estado de calibración (N=500 partidos simétricos, nivel 75)
 
-y debe concretar:
+| Métrica | Actual | Target | Delta | Severidad |
+|--------|--------|--------|-------|----------|
+| goals/match | 1.83 | 2.62 ± 0.20 | 0.79 | CRITICAL |
+| shots/match | 14.0 | 23.0 ± 2.0 | 9.0 | CRITICAL |
+| SOT/match | 4.77 | 8.0 ± 1.0 | 3.2 | HIGH |
+| corners/match | 1.84 | 10.0 ± 1.5 | 8.2 | MEDIUM |
+| fouls/match | 12.3 | 22.0 ± 3.0 | 9.7 | MEDIUM |
+| yellows/match | 2.77 | 4.2 ± 0.5 | 1.4 | MEDIUM |
+| reds/match | 0.21 | 0.12 ± 0.05 | 0.09 | MEDIUM |
+| home_win_pct | 0.37 | 0.44 ± 0.04 | 0.07 | CRITICAL |
+| draw_pct | 0.33 | 0.25 ± 0.03 | 0.08 | HIGH |
 
-- módulos exactos del código;
-- contratos entre capas;
-- formato de eventos;
-- política de seeds;
-- estrategia de configuración;
-- plan de importación desde MySQL.
+#### Tests de calibración fallidos (18 total)
+
+**test_match_distributions.py (12):**
+- test_goals_per_match
+- test_goals_home_per_match
+- test_goals_away_per_match
+- test_home_win_pct
+- test_draw_pct
+- test_shots_per_match
+- test_shots_on_target_per_match
+- test_corners_per_match
+- test_fouls_per_match
+- test_yellow_cards_per_match
+- test_red_cards_per_match
+- test_distribucion_goles_por_tramo[0_15, 16_30, 31_45, 76_90, 90+] (5)
+
+**test_xg_model.py (2):**
+- test_penalti_elite_xg_mayor_070
+- test_cabeza_20m_xg_menor_005
+
+#### Bugs críticos del modelo xG
+
+1. Fórmula ADITIVA ponderada → produce xG en [0.39, 0.68] nunca bajo ni alto
+2. El clamp es [0.005, 0.75] pero XG_HARD_BOUNDS exige [0.001, 0.99]
+3. Las zonas (3x3 genérica) no mapean a XG_ZONE_TARGETS (10 zonas semánticas)
+
+#### Acción requerida
+
+Calibrar los parámetros del motor en `ParametrosSimulacionBaseline` y corregir el modelo xG para que:
+- Use modelo MULTIPLICATIVO con xG base por zona + modificadores
+- Alinee los bounds a [0.001, 0.99]
+- Mapee las 10 zonas semánticas de XG_ZONE_TARGETS

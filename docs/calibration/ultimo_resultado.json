@@ -1,0 +1,19 @@
+{
+  "parametros": {
+    "posesiones_base": 128,
+    "posesiones_variacion": 17,
+    "probabilidad_base_tiro": 0.17796055376146103,
+    "probabilidad_base_falta": 0.11244982631873911,
+    "probabilidad_base_corner": 0.22289221262474376,
+    "probabilidad_base_tiro_puerta": 0.3843035898118323,
+    "probabilidad_base_gol": 0.2584137224199745
+  },
+  "score": 0.467,
+  "errores": {
+    "goles": 0.0,
+    "tiros": 0.543,
+    "posesion": 0.0155,
+    "corners": 0.7509
+  },
+  "iteraciones": 77
+}
