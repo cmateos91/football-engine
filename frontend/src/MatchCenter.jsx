@@ -14,7 +14,13 @@ const EVENT_ICONS = {
   INICIO: '🏁',
   FINAL: '🔚',
   PARADA: '🧤',
-  RECUPERACION: '🔄'
+  RECUPERACION: '🔄',
+  PENALTI: '🎯',
+  TIRO_LIBRE: '🧱',
+  CORNER: '🚩',
+  CONTRAATAQUE: '⚡',
+  CENTRO: '🏹',
+  DUELO_AEREO: '🪂'
 };
 
 function MatchCenter({ onBack, local, visitante }) {

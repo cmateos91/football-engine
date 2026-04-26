@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.websockets import WebSocketState
 from typing import List, Dict
 import asyncio
 import uuid
@@ -142,6 +143,8 @@ async def match_websocket(websocket: WebSocket, sim_id: str):
     marcador_visita = 0
     posesiones_local = 0
     total_iteraciones = 0
+    ultima_clave_evento: tuple[int | None, str, str] | None = None
+    ultimo_minuto_por_tipo: dict[str, int] = {}
     
     try:
         for estado in simulador:
@@ -152,6 +155,20 @@ async def match_websocket(websocket: WebSocket, sim_id: str):
             if estado.evento_actual:
                 # Omitir pases para el feed en vivo (highlights)
                 if estado.evento_actual.tipo == TipoEventoPartido.PASE:
+                    continue
+
+                clave = (
+                    estado.evento_actual.equipo_id,
+                    estado.evento_actual.tipo.name,
+                    estado.evento_actual.descripcion or "",
+                )
+                minuto_ultimo_tipo = ultimo_minuto_por_tipo.get(estado.evento_actual.tipo.name, -99)
+                if clave == ultima_clave_evento:
+                    continue
+                if (
+                    estado.evento_actual.tipo == TipoEventoPartido.RECUPERACION
+                    and estado.minuto - minuto_ultimo_tipo < 2
+                ):
                     continue
                 
                 if estado.evento_actual.tipo == TipoEventoPartido.GOL:
@@ -177,6 +194,8 @@ async def match_websocket(websocket: WebSocket, sim_id: str):
                 }
                 
                 await websocket.send_json(msg)
+                ultima_clave_evento = clave
+                ultimo_minuto_por_tipo[estado.evento_actual.tipo.name] = estado.minuto
                 
                 # Velocidad de narración (ajustable)
                 await asyncio.sleep(0.8)
@@ -186,7 +205,8 @@ async def match_websocket(websocket: WebSocket, sim_id: str):
     except Exception as e:
         print(f"Error in simulation stream: {e}")
     finally:
-        await websocket.close()
+        if websocket.client_state is not WebSocketState.DISCONNECTED:
+            await websocket.close()
 
 if __name__ == "__main__":
     import uvicorn
