@@ -11,7 +11,7 @@ from motor_futbol.dominio.espacial import ZonaCampo
 class NarradorPartido:
     """Genera textos variados evitando repeticiones inmediatas."""
 
-    def __init__(self, generador: Random) -> None:
+def __init__(self, generador: Random) -> None:
         self._generador = generador
         self._recientes: dict[str, deque[str]] = defaultdict(lambda: deque(maxlen=5))
 
