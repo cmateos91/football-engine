@@ -107,3 +107,20 @@ def test_equipo_mas_fuerte_genera_mas_peligro_que_uno_debil_en_un_escenario_cont
 
     assert resultado.estadisticas_local.tiros >= resultado.estadisticas_visitante.tiros
     assert resultado.estadisticas_local.goles >= resultado.estadisticas_visitante.goles
+
+
+def test_corner_y_centro_conservan_el_mismo_lanzador() -> None:
+    contexto = crear_contexto_partido()
+    resultado = simular_partido_baseline(contexto)
+    eventos = resultado.estado_final.eventos
+
+    for indice, evento in enumerate(eventos[:-1]):
+        if evento.tipo is not TipoEventoPartido.CORNER:
+            continue
+        siguiente = eventos[indice + 1]
+        if (
+            siguiente.tipo is TipoEventoPartido.CENTRO
+            and siguiente.equipo_id == evento.equipo_id
+            and siguiente.minuto == evento.minuto
+        ):
+            assert siguiente.jugador_principal_id == evento.jugador_principal_id
