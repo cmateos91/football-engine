@@ -156,3 +156,49 @@ def _obtener_entero_con_alias(datos: Mapping[str, object], *claves: str) -> int:
             return obtener_entero(datos, clave)
     claves_texto = ", ".join(claves)
     raise KeyError(f"No se encontro ninguna de las claves esperadas: {claves_texto}.")
+
+@dataclass(frozen=True, slots=True)
+class FilaEntrenadorCruda:
+    """Representa una fila cruda de la tabla Entrenador."""
+
+    id: int
+    nombre: str
+    formacion: str
+    posesion: int
+    contraataque_rapido: int
+    contraataque_largo: int
+    por_las_bandas: int
+    balon_largo: int
+    equipo_nombre: str | None = None
+    nacionalidad: str | None = None
+    tipo: str | None = None
+    edad: int | None = None
+
+    def __post_init__(self) -> None:
+        validar_identificador("id", self.id)
+        validar_cadena_no_vacia("nombre", self.nombre)
+        validar_entero_en_rango("posesion", self.posesion, minimo=0, maximo=100)
+        validar_entero_en_rango("contraataque_rapido", self.contraataque_rapido, minimo=0, maximo=100)
+        validar_entero_en_rango("contraataque_largo", self.contraataque_largo, minimo=0, maximo=100)
+        validar_entero_en_rango("por_las_bandas", self.por_las_bandas, minimo=0, maximo=100)
+        validar_entero_en_rango("balon_largo", self.balon_largo, minimo=0, maximo=100)
+
+    @classmethod
+    def desde_mapping(cls, datos: Mapping[str, object]) -> FilaEntrenadorCruda:
+        return cls(
+            id=obtener_entero(datos, "id_entrenador"),
+            nombre=obtener_cadena(datos, "nombre"),
+            formacion=obtener_cadena(datos, "formacion"),
+            posesion=obtener_entero(datos, "posesion"),
+            contraataque_rapido=obtener_entero(datos, "contraataque_rapido"),
+            contraataque_largo=obtener_entero(datos, "contraataque_largo"),
+            por_las_bandas=obtener_entero(datos, "por_las_bandas"),
+            balon_largo=obtener_entero(datos, "balon_largo"),
+            equipo_nombre=obtener_cadena_opcional(datos, "equipo"),
+            nacionalidad=obtener_cadena_opcional(datos, "nacionalidad"),
+            tipo=obtener_cadena_opcional(datos, "tipo"),
+            edad=obtener_entero_opcional(datos, "edad"),
+        )
+
+    def a_dict(self) -> dict[str, object]:
+        return {campo.name: getattr(self, campo.name) for campo in dataclass_fields(self)}

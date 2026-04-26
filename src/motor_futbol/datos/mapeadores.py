@@ -66,3 +66,21 @@ def mapear_equipo_con_plantilla(
 
     jugadores = tuple(mapear_fila_jugador_a_dominio(fila) for fila in filas_jugadores)
     return Equipo(id=fila_equipo.id, nombre=fila_equipo.nombre, jugadores=jugadores)
+
+from motor_futbol.datos.filas_crudas import FilaEntrenadorCruda
+from motor_futbol.dominio.entrenador import Entrenador
+
+def mapear_fila_entrenador_a_dominio(fila: FilaEntrenadorCruda) -> Entrenador:
+    """Convierte una fila cruda de entrenador a la entidad del dominio."""
+    return Entrenador(
+        id=fila.id,
+        nombre=fila.nombre,
+        formacion_favorita=fila.formacion,
+        posesion=fila.posesion,
+        contraataque_rapido=fila.contraataque_rapido,
+        contraataque_largo=fila.contraataque_largo,
+        por_las_bandas=fila.por_las_bandas,
+        balon_largo=fila.balon_largo,
+        edad=fila.edad,
+        nacionalidad=fila.nacionalidad
+    )

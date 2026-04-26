@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Dashboard — Motor de Fútbol</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;800;900&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:      #070a0d;
+  --bg2:     #0d1218;
+  --bg3:     #131920;
+  --bg4:     #1a2230;
+  --border:  rgba(255,255,255,0.07);
+  --green:   #22c55e;
+  --purple:  #a78bfa;
+  --gold:    #fbbf24;
+  --red:     #f87171;
+  --blue:    #60a5fa;
+  --text:    #e8edf2;
+  --dimmed:  #8a9ab0;
+  --muted:   #3d4f62;
+  --sidebar: 220px;
+}
+html, body { width:100%; height:100%; background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; overflow:hidden; }
+body::before {
+  content:''; position:fixed; inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events:none; z-index:0;
+}
+#root { position:relative; z-index:1; height:100vh; display:flex; }
+
+/* scrollbar hidden */
+::-webkit-scrollbar { display:none; }
+* { scrollbar-width:none; }
+
+@keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+@keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+@keyframes barGrow { from { width:0 } }
+@keyframes numberCount { from { opacity:0; transform:scale(.8); } to { opacity:1; transform:scale(1); } }
+
+/* TWEAKS */
+#tweaks-panel {
+  position:fixed; bottom:24px; right:24px; z-index:1000;
+  background:var(--bg2); border:1px solid var(--border); border-radius:12px;
+  padding:18px 20px; width:220px; display:none; flex-direction:column; gap:14px;
+  box-shadow:0 8px 40px rgba(0,0,0,.6);
+}
+#tweaks-panel.open { display:flex; }
+.tw-title { font-family:'Barlow Condensed',sans-serif; font-size:13px; letter-spacing:.12em; text-transform:uppercase; color:var(--dimmed); }
+.tw-row { display:flex; flex-direction:column; gap:5px; }
+.tw-label { font-size:11px; color:var(--dimmed); text-transform:uppercase; letter-spacing:.08em; }
+.tw-row select { width:100%; background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:5px 8px; border-radius:6px; font-size:13px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="tweaks-panel">
+  <div class="tw-title">Tweaks</div>
+  <div class="tw-row">
+    <span class="tw-label">Vista activa</span>
+    <select id="tw-view">
+      <option value="dashboard">Dashboard</option>
+      <option value="finances">Finanzas expandidas</option>
+    </select>
+  </div>
+  <div class="tw-row">
+    <span class="tw-label">Temporada</span>
+    <select id="tw-season">
+      <option value="2025/26">2025/26</option>
+      <option value="2026/27">2026/27</option>
+    </select>
+  </div>
+</div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+/* ─── MOCK DATA ─── */
+const CLUB = { nombre: 'Andalucía Nervión', iniciales: 'AN', ciudad: 'Sevilla', estadio: 'Estadio Nervión' };
+const SEASON = '2025 / 26';
+
+const CLASIFICACION = [
+  { pos:1,  nombre:'Betis Promesas',        pj:22, g:14, e:5, p:3,  gf:42, gc:18, pts:47, forma:['W','W','D','W','W'] },
+  { pos:2,  nombre:'Andalucía Nervión',     pj:22, g:13, e:4, p:5,  gf:38, gc:24, pts:43, forma:['W','L','W','W','D'], esClub:true },
+  { pos:3,  nombre:'Sevilla FC B',          pj:22, g:11, e:6, p:5,  gf:35, gc:27, pts:39, forma:['D','W','W','L','W'] },
+  { pos:4,  nombre:'Andalucía Verdiblanco', pj:22, g:10, e:5, p:7,  gf:29, gc:28, pts:35, forma:['L','D','W','D','W'] },
+  { pos:5,  nombre:'Recreativo Sur',        pj:22, g:9,  e:5, p:8,  gf:31, gc:33, pts:32, forma:['W','L','L','W','D'] },
+  { pos:6,  nombre:'Cádiz B',               pj:22, g:8,  e:4, p:10, gf:27, gc:35, pts:28, forma:['L','L','D','W','L'] },
+];
+
+const JUGADORES = [
+  { nombre:'Rafael Selva',    pos:'DEL', val:'2.4M', rating:84, goles:11, asist:4 },
+  { nombre:'Marco Torres',    pos:'MED', val:'1.8M', rating:82, goles:5,  asist:9 },
+  { nombre:'Iván Romeru',     pos:'DEF', val:'1.5M', rating:80, goles:1,  asist:3 },
+  { nombre:'Pablo Martín',    pos:'POR', val:'1.2M', rating:81, goles:0,  asist:0 },
+  { nombre:'Álex Gómez',      pos:'DEL', val:'1.1M', rating:78, goles:7,  asist:2 },
+];
+
+const OBJETIVOS = [
+  { texto:'Terminar entre los 3 primeros', progreso:85, estado:'ok' },
+  { texto:'Superar la fase de grupos de Copa', progreso:100, estado:'ok' },
+  { texto:'Mantener el presupuesto saneado', progreso:68, estado:'warn' },
+  { texto:'Desarrollar 2 canteranos', progreso:50, estado:'warn' },
+];
+
+const NOTICIAS = [
+  { tipo:'lesion',    texto:'Marco Torres se perderá 2 semanas por sobrecarga muscular', tiempo:'Hace 1h',   icono:'🩹' },
+  { tipo:'mercado',  texto:'Interés del Recreativo Sur por Álex Gómez (oferta 0.9M€)', tiempo:'Hace 3h',   icono:'💰' },
+  { tipo:'aficion',  texto:'La afición exige refuerzos en el mercado de invierno',      tiempo:'Hace 5h',   icono:'📢' },
+  { tipo:'filial',   texto:'Canterano Javier Ruiz convocado por la selección sub-19',   tiempo:'Hace 1d',   icono:'⭐' },
+];
+
+const PROXIMOS = [
+  { rival:'Recreativo Sur',   lugar:'L', fecha:'28 Ene', hora:'18:00', torneo:'Liga' },
+  { rival:'Cádiz B',          lugar:'V', fecha:'4 Feb',  hora:'20:00', torneo:'Liga' },
+  { rival:'Sevilla FC B',     lugar:'L', fecha:'11 Feb', hora:'17:00', torneo:'Copa' },
+];
+
+const ULTIMOS = [
+  { rival:'Cádiz B',              r:'W', gL:3, gV:1, lugar:'L' },
+  { rival:'Betis Promesas',       r:'L', gL:0, gV:2, lugar:'V' },
+  { rival:'Recreativo Sur',       r:'W', gL:2, gV:0, lugar:'L' },
+  { rival:'Andalucía Verdiblanco',r:'W', gL:1, gV:0, lugar:'V' },
+  { rival:'Sevilla FC B',         r:'D', gL:1, gV:1, lugar:'L' },
+];
+
+/* ─── UI ATOMS ─── */
+const C = {
+  green:  'var(--green)',
+  purple: 'var(--purple)',
+  gold:   'var(--gold)',
+  red:    'var(--red)',
+  blue:   'var(--blue)',
+};
+
+function Label({ children, style }) {
+  return <span style={{ fontFamily:'Barlow Condensed', fontSize:10, letterSpacing:'0.18em', textTransform:'uppercase', color:'var(--dimmed)', ...style }}>{children}</span>;
+}
+
+function Card({ children, style, glow }) {
+  return (
+    <div style={{
+      background:'linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%)',
+      border:'1px solid var(--border)',
+      borderRadius:14,
+      padding:'18px 20px',
+      position:'relative',
+      overflow:'hidden',
+      boxShadow: glow ? `0 0 30px ${glow}22` : 'none',
+      ...style
+    }}>{children}</div>
+  );
+}
+
+function FormaCircle({ r }) {
+  const bg = r==='W' ? C.green : r==='D' ? C.gold : C.red;
+  return <div style={{ width:18, height:18, borderRadius:'50%', background:`${bg}22`, border:`1.5px solid ${bg}`, display:'flex', alignItems:'center', justifyContent:'center' }}>
+    <span style={{ fontSize:8, fontFamily:'Barlow Condensed', fontWeight:700, color:bg }}>{r}</span>
+  </div>;
+}
+
+/* ─── SIDEBAR ─── */
+const NAV_ITEMS = [
+  { id:'dashboard', label:'Dashboard',   icon: <IconDash/> },
+  { id:'plantilla', label:'Plantilla',   icon: <IconSquad/> },
+  { id:'mercado',   label:'Mercado',     icon: <IconMarket/> },
+  { id:'finanzas',  label:'Finanzas',    icon: <IconFinance/> },
+  { id:'partido',   label:'Simulador',   icon: <IconBall/>, href:'PartidoScreen.html' },
+];
+
+function IconDash()    { return <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.3"/><rect x="9" y="1" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.3"/><rect x="1" y="9" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.3"/><rect x="9" y="9" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.3"/></svg>; }
+function IconSquad()   { return <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" strokeWidth="1.3"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>; }
+function IconMarket()  { return <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3h10l-1.5 6H4.5L3 3z" stroke="currentColor" strokeWidth="1.3"/><circle cx="6" cy="13" r="1" stroke="currentColor" strokeWidth="1.3"/><circle cx="11" cy="13" r="1" stroke="currentColor" strokeWidth="1.3"/></svg>; }
+function IconFinance() { return <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 12l3.5-4 3 3L12 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
+function IconBall()    { return <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/><path d="M8 1.5c0 0-3 2-3 6.5s3 6.5 3 6.5M8 1.5c0 0 3 2 3 6.5s-3 6.5-3 6.5M1.5 8h13" stroke="currentColor" strokeWidth="1"/></svg>; }
+
+function Sidebar({ active, setActive }) {
+  return (
+    <div style={{
+      width:'var(--sidebar)', minWidth:'var(--sidebar)',
+      background:'var(--bg2)',
+      borderRight:'1px solid var(--border)',
+      display:'flex', flexDirection:'column',
+      height:'100vh',
+      zIndex:10,
+    }}>
+      {/* Club badge */}
+      <div style={{ padding:'28px 20px 24px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:12 }}>
+        <div style={{ width:40, height:40, borderRadius:'50%', background:`${C.green}22`, border:`2px solid ${C.green}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          <span style={{ fontFamily:'Barlow Condensed', fontWeight:800, fontSize:14, color:C.green }}>{CLUB.iniciales}</span>
+        </div>
+        <div>
+          <div style={{ fontFamily:'Barlow Condensed', fontWeight:700, fontSize:15, lineHeight:1.2, color:'var(--text)' }}>{CLUB.nombre}</div>
+          <div style={{ fontSize:10, color:'var(--dimmed)', letterSpacing:'0.05em' }}>Presidente</div>
+        </div>
+      </div>
+
+      {/* Season badge */}
+      <div style={{ padding:'12px 20px', borderBottom:'1px solid var(--border)' }}>
+        <div style={{ background:`${C.green}12`, border:`1px solid ${C.green}33`, borderRadius:6, padding:'5px 10px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <Label>Temporada</Label>
+          <span style={{ fontFamily:'Barlow Condensed', fontWeight:700, fontSize:14, color:C.green }}>{SEASON}</span>
+        </div>
+      </div>
+
+      {/* Nav */}
+      <nav style={{ flex:1, padding:'12px 10px', display:'flex', flexDirection:'column', gap:2 }}>
+        {NAV_ITEMS.map(item => {
+          const isActive = active === item.id;
+          return item.href
+            ? <a key={item.id} href={item.href} style={{ textDecoration:'none' }}>
+                <NavItem item={item} isActive={false}/>
+              </a>
+            : <div key={item.id} onClick={() => setActive(item.id)}>
+                <NavItem item={item} isActive={isActive}/>
+              </div>;
+        })}
+      </nav>
+
+      {/* Bottom */}
+      <div style={{ padding:'16px 20px', borderTop:'1px solid var(--border)' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <div style={{ width:8, height:8, borderRadius:'50%', background:C.green, boxShadow:`0 0 6px ${C.green}` }}/>
+          <span style={{ fontSize:11, color:'var(--dimmed)' }}>Jornada 23 · 28 Ene</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NavItem({ item, isActive }) {
+  return (
+    <div style={{
+      display:'flex', alignItems:'center', gap:10,
+      padding:'9px 12px', borderRadius:8,
+      cursor:'pointer',
+      color: isActive ? C.green : 'var(--dimmed)',
+      background: isActive ? `${C.green}14` : 'transparent',
+      border: isActive ? `1px solid ${C.green}33` : '1px solid transparent',
+      transition:'all 0.15s',
+      fontFamily:'Barlow Condensed', fontWeight:isActive?700:400, fontSize:14, letterSpacing:'0.04em',
+    }}>
+      {item.icon}
+      {item.label}
+      {item.id === 'mercado' && <span style={{ marginLeft:'auto', background:`${C.gold}22`, border:`1px solid ${C.gold}44`, color:C.gold, borderRadius:10, padding:'1px 6px', fontSize:10, fontFamily:'Barlow Condensed' }}>2</span>}
+    </div>
+  );
+}
+
+/* ─── KPI CARD ─── */
+function KpiCard({ label, value, sub, color, icon, delay }) {
+  return (
+    <Card style={{ animation:`fadeUp 0.5s ${delay}s ease both`, display:'flex', flexDirection:'column', gap:10 }} glow={color}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+        <Label>{label}</Label>
+        <div style={{ width:32, height:32, borderRadius:8, background:`${color}18`, border:`1px solid ${color}33`, display:'flex', alignItems:'center', justifyContent:'center', color }}>{icon}</div>
+      </div>
+      <div style={{ fontFamily:'Barlow Condensed', fontWeight:900, fontSize:38, lineHeight:1, color:'var(--text)', animation:`numberCount 0.6s ${delay+0.1}s ease both` }}>{value}</div>
+      <div style={{ fontSize:12, color:'var(--dimmed)' }}>{sub}</div>
+    </Card>
+  );
+}
+
+/* ─── CLASIFICACION ─── */
+function Clasificacion() {
+  return (
+    <Card style={{ animation:'fadeUp 0.5s 0.3s ease both' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+        <Label>Clasificación</Label>
+        <span style={{ fontFamily:'Barlow Condensed', fontSize:11, color:C.green, letterSpacing:'0.06em' }}>LIGA · J22</span>
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
+        {CLASIFICACION.map((eq, i) => (
+          <div key={i} style={{
+            display:'grid', gridTemplateColumns:'18px 1fr 28px 28px 28px 28px 36px 86px',
+            alignItems:'center', gap:6, padding:'7px 8px', borderRadius:7,
+            background: eq.esClub ? `${C.green}0d` : 'transparent',
+            border: eq.esClub ? `1px solid ${C.green}22` : '1px solid transparent',
+          }}>
+            <span style={{ fontFamily:'Barlow Condensed', fontWeight:700, fontSize:13, color: i<3 ? C.green : 'var(--muted)', textAlign:'center' }}>{eq.pos}</span>
+            <span style={{ fontSize:12, color: eq.esClub ? 'var(--text)' : 'var(--dimmed)', fontWeight: eq.esClub?500:400, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{eq.nombre}</span>
+            <span style={{ fontSize:11, color:'var(--muted)', textAlign:'center' }}>{eq.pj}</span>
+            <span style={{ fontSize:11, color:'var(--muted)', textAlign:'center' }}>{eq.g}</span>
+            <span style={{ fontSize:11, color:'var(--muted)', textAlign:'center' }}>{eq.e}</span>
+            <span style={{ fontSize:11, color:'var(--muted)', textAlign:'center' }}>{eq.p}</span>
+            <span style={{ fontFamily:'Barlow Condensed', fontWeight:700, fontSize:14, color:'var(--text)', textAlign:'center' }}>{eq.pts}</span>
+            <div style={{ display:'flex', gap:3, justifyContent:'flex-end' }}>
+              {eq.forma.map((r,j) => <FormaCircle key={j} r={r}/>)}
+            </div>
+          </div>
+        ))}
+        {/* header */}
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'18px 1fr 28px 28px 28px 28px 36px 86px', gap:6, padding:'0 8px', marginTop:4 }}>
+        {['','','PJ','G','E','P','PTS','FORMA'].map((h,i) => (
+          <span key={i} style={{ fontFamily:'Barlow Condensed', fontSize:9, color:'var(--muted)', letterSpacing:'0.1em', textAlign:i>0?'center':'left' }}>{h}</span>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+/* ─── PRÓXIMOS PARTIDOS ─── */
+function ProximosPartidos() {
+  return (
+    <Card style={{ animation:'fadeUp 0.5s 0.25s ease both' }}>
+      <Label style={{ display:'block', marginBottom:14 }}>Próximos partidos</Label>
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {PROXIMOS.map((p, i) => (
+          <div key={i} style={{
+            display:'flex', alignItems:'center', gap:10,
+            padding:'10px 12px', borderRadius:9,
+            background: i===0 ? `${C.green}10` : 'var(--bg3)',
+            border: i===0 ? `1px solid ${C.green}33` : '1px solid var(--border)',
+          }}>
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', minWidth:36 }}>
+              <span style={{ fontFamily:'Barlow Condensed', fontWeight:700, fontSize:13, color: p.lugar==='L' ? C.green : C.purple }}>{p.lugar==='L'?'LOCAL':'VISIT'}</span>
+            </div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>vs {p.rival}</div>
+              <div style={{ fontSize:11, color:'var(--dimmed)' }}>{p.torneo} · {p.fecha} {p.hora}</div>
+            </div>
+            {i===0 && (
+              <a href="PartidoScreen.html" style={{ textDecoration:'none', fontFamily:'Barlow Condensed', fontWeight:700, fontSize:12, letterSpacing:'0.1em', color:C.green, background:`${C.green}18`, border:`1px solid ${C.green}44`, borderRadius:20, padding:'4px 12px', cursor:'pointer', whiteSpace:'nowrap' }}>
+                SIMULAR
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+/* ─── ÚLTIMOS RESULTADOS ─── */
+function UltimosResultados() {
+  return (
+    <Card style={{ animation:'fadeUp 0.5s 0.2s ease both' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+        <Label>Últimos resultados</Label>
+        <div style={{ display:'flex', gap:4 }}>
+          {ULTIMOS.map((r,i) => <FormaCircle key={i} r={r.r}/>)}
+        </div>
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+        {ULTIMOS.map((m, i) => {
+          const color = m.r==='W' ? C.green : m.r==='D' ? C.gold : C.red;
+          return (
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 10px', borderRadius:7, background:'var(--bg3)', border:'1px solid var(--border)' }}>
+              <div style={{ width:28, height:28, borderRadius:6, background:`${color}18`, border:`1px solid ${color}44`, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <span style={{ fontFamily:'Barlow Condensed', fontWeight:800, fontSize:13, color }}>{m.r}</span>
+              </div>
+              <span style={{ flex:1, fontSize:12, color:'var(--dimmed)' }}>{m.lugar==='L'?'vs':'en'} {m.rival}</span>
+              <span style={{ fontFamily:'Barlow Condensed', fontWeight:700, fontSize:16, color:'var(--text)' }}>{m.gL}–{m.gV}</span>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+/* ─── PLANTILLA TOP ─── */
+function PlantillaTop() {
+  return (
+    <Card style={{ animation:'fadeUp 0.5s 0.35s ease both' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+        <Label>Mejores jugadores</Label>
+        <span style={{ fontFamily:'Barlow Condensed', fontSize:11, color:'var(--dimmed)' }}>24 en plantilla</span>
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+        {JUGADORES.map((j, i) => (
+          <div key={i} style={{ display:'grid', gridTemplateColumns:'28px 1fr 36px 28px 28px', gap:8, alignItems:'center', padding:'7px 10px', borderRadius:8, background:'var(--bg3)', border:'1px solid var(--border)' }}>
+            <div style={{ width:28, height:28, borderRadius:'50%', background:`${C.green}18`, border:`1px solid ${C.green}33`, display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <span style={{ fontFamily:'Barlow Condensed', fontWeight:800, fontSize:10, color:C.green }}>{j.pos}</span>
+            </div>
+            <div>
+              <div style={{ fontSize:12, fontWeight:500 }}>{j.nombre}</div>
+              <div style={{ fontSize:10, color:'var(--dimmed)' }}>Val. {j.val}</div>
+            </div>
+            <RatingBadge r={j.rating}/>
+            <div style={{ textAlign:'center' }}>
+              <span style={{ fontFamily:'Barlow Condensed', fontSize:14, color:C.gold }}>⚽{j.goles}</span>
+            </div>
+            <div style={{ textAlign:'center' }}>
+              <span style={{ fontFamily:'Barlow Condensed', fontSize:14, color:C.blue }}>🅰{j.asist}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function RatingBadge({ r }) {
+  const color = r>=85 ? C.gold : r>=80 ? C.green : r>=75 ? C.blue : 'var(--dimmed)';
+  return <div style={{ width:36, height:22, borderRadius:5, background:`${color}18`, border:`1px solid ${color}44`, display:'flex', alignItems:'center', justifyContent:'center' }}>
+    <span style={{ fontFamily:'Barlow Condensed', fontWeight:800, fontSize:13, color }}>{r}</span>
+  </div>;
+}
+
+/* ─── OBJETIVOS ─── */
+function Objetivos() {
+  return (
+    <Card style={{ animation:'fadeUp 0.5s 0.4s ease both' }}>
+      <Label style={{ display:'block', marginBottom:14 }}>Objetivos de temporada</Label>
+      <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+        {OBJETIVOS.map((o, i) => {
+          const color = o.estado==='ok' ? C.green : C.gold;
+          return (
+            <div key={i}>
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5 }}>
+                <span style={{ fontSize:12, color:'var(--dimmed)' }}>{o.texto}</span>
+                <span style={{ fontFamily:'Barlow Condensed', fontWeight:700, fontSize:13, color }}>{o.progreso}%</span>
+              </div>
+              <div style={{ height:4, background:'rgba(255,255,255,0.06)', borderRadius:2, overflow:'hidden' }}>
+                <div style={{ height:'100%', width:`${o.progreso}%`, background:`linear-gradient(90deg,${color},${color}cc)`, borderRadius:2, boxShadow:`0 0 6px ${color}66`, animation:'barGrow 1s ease' }}/>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+/* ─── FINANZAS RESUMEN ─── */
+function FinanzasResumen() {
+  const items = [
+    { label:'Presupuesto total',  val:'12.4M €', color:C.green,  pct:100 },
+    { label:'Gastado en salarios',val:'7.1M €',  color:C.gold,   pct:57  },
+    { label:'Bolsa de fichajes',  val:'3.8M €',  color:C.blue,   pct:31  },
+    { label:'Ingresos taquilla',  val:'1.5M €',  color:C.purple, pct:12  },
+  ];
+  return (
+    <Card style={{ animation:'fadeUp 0.5s 0.45s ease both' }}>
+      <Label style={{ display:'block', marginBottom:14 }}>Finanzas</Label>
+      <div style={{ display:'flex', flexDirection:'column', gap:11 }}>
+        {items.map((item, i) => (
+          <div key={i}>
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+              <span style={{ fontSize:11, color:'var(--dimmed)' }}>{item.label}</span>
+              <span style={{ fontFamily:'Barlow Condensed', fontWeight:700, fontSize:13, color:item.color }}>{item.val}</span>
+            </div>
+            <div style={{ height:3, background:'rgba(255,255,255,0.06)', borderRadius:2 }}>
+              <div style={{ height:'100%', width:`${item.pct}%`, background:item.color, borderRadius:2, opacity:0.7, animation:'barGrow 1s ease' }}/>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+/* ─── NOTICIAS ─── */
+function Noticias() {
+  return (
+    <Card style={{ animation:'fadeUp 0.5s 0.5s ease both' }}>
+      <Label style={{ display:'block', marginBottom:14 }}>Noticias del club</Label>
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {NOTICIAS.map((n, i) => (
+          <div key={i} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'9px 10px', borderRadius:8, background:'var(--bg3)', border:'1px solid var(--border)', cursor:'pointer' }}>
+            <span style={{ fontSize:16, flexShrink:0, marginTop:1 }}>{n.icono}</span>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:12, color:'var(--text)', lineHeight:1.4 }}>{n.texto}</div>
+              <div style={{ fontSize:10, color:'var(--muted)', marginTop:3 }}>{n.tiempo}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+/* ─── HEADER ─── */
+function Header() {
+  return (
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24, animation:'fadeIn 0.4s ease' }}>
+      <div>
+        <div style={{ fontFamily:'Barlow Condensed', fontWeight:900, fontSize:28, letterSpacing:'0.02em', lineHeight:1 }}>Dashboard</div>
+        <div style={{ fontSize:12, color:'var(--dimmed)', marginTop:2 }}>Bienvenido, Presidente · {CLUB.estadio}</div>
+      </div>
+      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        <div style={{ padding:'7px 16px', borderRadius:8, background:'var(--bg3)', border:'1px solid var(--border)', fontSize:12, color:'var(--dimmed)' }}>
+          Jornada <span style={{ fontFamily:'Barlow Condensed', fontWeight:700, fontSize:14, color:'var(--text)' }}>23</span> · <span style={{ color:'var(--dimmed)' }}>28 Ene 2026</span>
+        </div>
+        <div style={{ width:36, height:36, borderRadius:10, background:`${C.green}18`, border:`1px solid ${C.green}44`, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }}>
+          <span style={{ fontFamily:'Barlow Condensed', fontWeight:800, fontSize:13, color:C.green }}>AN</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── APP ─── */
+function App() {
+  const [active, setActive] = useState('dashboard');
+  const [tweaksOpen, setTweaksOpen] = useState(false);
+
+  useEffect(() => {
+    const panel = document.getElementById('tweaks-panel');
+    if (tweaksOpen) panel.classList.add('open'); else panel.classList.remove('open');
+  }, [tweaksOpen]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.data?.type === '__activate_edit_mode')   setTweaksOpen(true);
+      if (e.data?.type === '__deactivate_edit_mode') setTweaksOpen(false);
+    };
+    window.addEventListener('message', handler);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+    "view": "dashboard",
+    "season": "2025/26"
+  }/*EDITMODE-END*/;
+
+  return (
+    <div style={{ display:'flex', height:'100vh', overflow:'hidden' }}>
+      <Sidebar active={active} setActive={setActive}/>
+
+      {/* Main */}
+      <div style={{ flex:1, overflow:'hidden auto', padding:'28px 28px 40px' }}>
+        <Header/>
+
+        {/* KPIs */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:18 }}>
+          <KpiCard label="Posición Liga"  value="2º"      sub="−4 pts del líder"       color={C.green}  icon={<IconDash/>}    delay={0.05}/>
+          <KpiCard label="Bolsa fichajes" value="3.8M"    sub="€ disponibles"           color={C.blue}   icon={<IconMarket/>}  delay={0.1}/>
+          <KpiCard label="Valor plantilla"value="28.6M"   sub="€ valor total"           color={C.gold}   icon={<IconSquad/>}   delay={0.15}/>
+          <KpiCard label="Satisfacción"   value="74%"     sub="Afición · +3 este mes"   color={C.purple} icon={<IconFinance/>} delay={0.2}/>
+        </div>
+
+        {/* Main grid */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 320px', gap:14 }}>
+          {/* Col 1 */}
+          <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+            <ProximosPartidos/>
+            <UltimosResultados/>
+          </div>
+          {/* Col 2 */}
+          <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+            <Clasificacion/>
+          </div>
+          {/* Col 3 */}
+          <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+            <Objetivos/>
+            <FinanzasResumen/>
+            <Noticias/>
+          </div>
+        </div>
+
+        {/* Bottom: plantilla */}
+        <div style={{ marginTop:14 }}>
+          <PlantillaTop/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

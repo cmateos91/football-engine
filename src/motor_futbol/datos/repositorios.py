@@ -15,9 +15,13 @@ from motor_futbol.datos.catalogo_mapeo import (
     obtener_columnas_esperadas,
 )
 from motor_futbol.datos.conexion_bd import crear_motor_bd
-from motor_futbol.datos.filas_crudas import FilaEquipoCruda, FilaJugadorCruda
-from motor_futbol.datos.mapeadores import mapear_equipo_con_plantilla
+from motor_futbol.datos.filas_crudas import FilaEntrenadorCruda, FilaEquipoCruda, FilaJugadorCruda
+from motor_futbol.datos.mapeadores import (
+    mapear_equipo_con_plantilla,
+    mapear_fila_entrenador_a_dominio,
+)
 from motor_futbol.dominio import Equipo
+from motor_futbol.dominio.entrenador import Entrenador
 
 
 @dataclass(slots=True)
@@ -82,6 +86,32 @@ class RepositorioFootballEngine:
     def listar_equipos(self) -> tuple[Equipo, ...]:
         equipos_crudos = self.listar_equipos_crudos()
         return tuple(self.obtener_equipo_por_id(fila.id) for fila in equipos_crudos)
+
+    def listar_entrenadores_crudos(self) -> tuple[FilaEntrenadorCruda, ...]:
+        consulta = text(
+            f"SELECT {_seleccionar_columnas('Entrenador')} FROM `Entrenador` ORDER BY `id_entrenador` ASC"
+        )
+        filas = self._ejecutar_y_convertir(consulta)
+        return tuple(FilaEntrenadorCruda.desde_mapping(fila) for fila in filas)
+
+    def obtener_entrenador_por_id(self, id_entrenador: int) -> Entrenador:
+        consulta = text(
+            f"SELECT {_seleccionar_columnas('Entrenador')} FROM `Entrenador` WHERE `id_entrenador` = :id_entrenador"
+        )
+        fila = self._ejecutar_una(consulta, {"id_entrenador": id_entrenador})
+        if fila is None:
+            raise LookupError(f"No existe el entrenador con id {id_entrenador}.")
+        return mapear_fila_entrenador_a_dominio(FilaEntrenadorCruda.desde_mapping(fila))
+
+    def obtener_entrenador_por_equipo(self, nombre_equipo: str) -> Entrenador:
+        """Busca al entrenador que pertenece a un equipo por su nombre."""
+        consulta = text(
+            f"SELECT {_seleccionar_columnas('Entrenador')} FROM `Entrenador` WHERE `equipo` = :nombre_equipo"
+        )
+        fila = self._ejecutar_una(consulta, {"nombre_equipo": nombre_equipo})
+        if fila is None:
+            raise LookupError(f"No existe un entrenador asignado al equipo {nombre_equipo!r}.")
+        return mapear_fila_entrenador_a_dominio(FilaEntrenadorCruda.desde_mapping(fila))
 
     def _ejecutar_y_convertir(
         self, consulta: Executable, parametros: Mapping[str, object] | None = None

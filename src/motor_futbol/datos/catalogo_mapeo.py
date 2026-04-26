@@ -166,9 +166,25 @@ DEFINICIONES_COLUMNAS_JUGADOR: tuple[DefinicionColumna, ...] = (
     DefinicionColumna("Jugador", "peso", "peso_kg", FamiliaColumna.PERFIL, False),
 )
 
+DEFINICIONES_COLUMNAS_ENTRENADOR: tuple[DefinicionColumna, ...] = (
+    DefinicionColumna("Entrenador", "id_entrenador", "id", FamiliaColumna.IDENTIDAD, True),
+    DefinicionColumna("Entrenador", "nombre", "nombre", FamiliaColumna.IDENTIDAD, True),
+    DefinicionColumna("Entrenador", "equipo", "equipo_nombre", FamiliaColumna.PERFIL, False),
+    DefinicionColumna("Entrenador", "nacionalidad", "nacionalidad", FamiliaColumna.PERFIL, False),
+    DefinicionColumna("Entrenador", "formacion", "formacion_favorita", FamiliaColumna.PERFIL, True),
+    DefinicionColumna("Entrenador", "tipo", "tipo", FamiliaColumna.PERFIL, False),
+    DefinicionColumna("Entrenador", "edad", "edad", FamiliaColumna.PERFIL, False),
+    DefinicionColumna("Entrenador", "posesion", "posesion", FamiliaColumna.PERFIL, True),
+    DefinicionColumna("Entrenador", "contraataque_rapido", "contraataque_rapido", FamiliaColumna.PERFIL, True),
+    DefinicionColumna("Entrenador", "contraataque_largo", "contraataque_largo", FamiliaColumna.PERFIL, True),
+    DefinicionColumna("Entrenador", "por_las_bandas", "por_las_bandas", FamiliaColumna.PERFIL, True),
+    DefinicionColumna("Entrenador", "balon_largo", "balon_largo", FamiliaColumna.PERFIL, True),
+)
+
 DEFINICIONES_POR_TABLA: tuple[DefinicionColumna, ...] = (
     *DEFINICIONES_COLUMNAS_EQUIPO,
     *DEFINICIONES_COLUMNAS_JUGADOR,
+    *DEFINICIONES_COLUMNAS_ENTRENADOR,
 )
 
 
