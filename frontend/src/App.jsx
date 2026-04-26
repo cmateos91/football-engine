@@ -53,13 +53,19 @@ function App() {
     }
   };
 
-  const startQuickMatch = () => {
+  const startQuickMatch = async () => {
     // Para el demo, usamos Madrid (154) vs Barça (149)
-    const local = teams.find(t => t.id === 154) || teams[0];
-    const visitante = teams.find(t => t.id === 149) || teams[1];
-    
-    setMatchData({ local, visitante });
-    setActiveTab('match-center');
+    try {
+      const response = await axios.post(`${API_BASE}/simulations/match`, {
+        local_id: 154,
+        visitante_id: 149
+      });
+      const { simulation_id, local, visitante } = response.data;
+      setMatchData({ id: simulation_id, local: { id: 154, nombre: local }, visitante: { id: 149, nombre: visitante } });
+      setActiveTab('match-center');
+    } catch (err) {
+      console.error("Error iniciando simulación:", err);
+    }
   };
 
   return (
@@ -239,12 +245,12 @@ function App() {
                 exit={{ opacity: 0, scale: 1.05 }}
               >
                 <MatchCenter 
-                  local={matchData.local} 
-                  visitante={matchData.visitante} 
+                  matchData={matchData}
                   onBack={() => setActiveTab('teams')} 
                 />
               </motion.div>
             )}
+
           </AnimatePresence>
         </div>
       </main>
