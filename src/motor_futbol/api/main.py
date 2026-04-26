@@ -142,7 +142,7 @@ async def match_websocket(websocket: WebSocket, sim_id: str):
     total_iteraciones = 0
     ultima_clave_evento: tuple[int | None, str, str] | None = None
     ultimo_minuto_por_tipo: dict[str, int] = {}
-minuto_actual = 0
+    minuto_actual = 0
 
     DELAYS = {
         "GOL": 4.5,
@@ -187,7 +187,7 @@ minuto_actual = 0
                     estado.evento_actual.tipo.name,
                     estado.evento_actual.descripcion or "",
                 )
-minuto_ultimo_tipo = ultimo_minuto_por_tipo.get(estado.evento_actual.tipo.name, -99)
+                minuto_ultimo_tipo = ultimo_minuto_por_tipo.get(estado.evento_actual.tipo.name, -99)
                 if clave == ultima_clave_evento:
                     continue
                 if (
