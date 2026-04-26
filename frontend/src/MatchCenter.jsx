@@ -172,7 +172,11 @@ function MatchCenter({ onBack, matchData }) {
         local_id: local?.id,
         visitante_id: visitante?.id
       });
-      setInstantResult(response.data);
+      const result = response.data;
+      setInstantResult(result);
+      setGolesL(result.local.goles);
+      setGolesV(result.visitante.goles);
+      setMinuto(95);
       setEstado('saltado');
     } catch (err) {
       console.error("Error al obtener resultado:", err);
@@ -376,6 +380,42 @@ function MatchCenter({ onBack, matchData }) {
           localNombre={local?.nombre}
           visitNombre={visitante?.nombre}
         />
+
+        {/* Resumen cuando se salta */}
+        {estado === 'saltado' && instantResult && (
+          <div className="saltado-summary">
+            <div className="summary-section">
+              <h4>Goleadores</h4>
+              <div className="scorers-row">
+                <div className="scorer-team">
+                  <span className="team-label" style={{color: LOCAL_COLOR}}>{instantResult.local.nombre}</span>
+                  {instantResult.local.goleadores.length > 0 ? (
+                    <ul>{instantResult.local.goleadores.map((g, i) => (<li key={i}>⚽ {g.minuto}' {g.descripcion.split(' ').slice(0,3).join(' ')}</li>))}</ul>
+                  ) : <span className="no-data">-</span>}
+                </div>
+                <div className="scorer-team">
+                  <span className="team-label" style={{color: VISIT_COLOR}}>{instantResult.visitante.nombre}</span>
+                  {instantResult.visitante.goleadores.length > 0 ? (
+                    <ul>{instantResult.visitante.goleadores.map((g, i) => (<li key={i}>⚽ {g.minuto}' {g.descripcion.split(' ').slice(0,3).join(' ')}</li>))}</ul>
+                  ) : <span className="no-data">-</span>}
+                </div>
+              </div>
+            </div>
+            {(instantResult.local.tarjetas.length > 0 || instantResult.visitante.tarjetas.length > 0) && (
+              <div className="summary-section">
+                <h4>Tarjetas</h4>
+                <div className="cards-row">
+                  <div className="cards-team">
+                    {instantResult.local.tarjetas.map((t, i) => (<span key={i} title="Tarjeta Amarilla">{t.minuto}' 🟨</span>))}
+                  </div>
+                  <div className="cards-team">
+                    {instantResult.visitante.tarjetas.map((t, i) => (<span key={i} title="Tarjeta Amarilla">{t.minuto}' 🟨</span>))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       )}
 
@@ -402,61 +442,8 @@ function MatchCenter({ onBack, matchData }) {
               </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* Vista de resultado instantáneo cuando se salta */}
-      {estado === 'saltado' && instantResult && (
-        <div className="instant-result-view">
-          <div className="mc-header">
-            <button className="back-btn-match" onClick={onBack}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              Volver
-            </button>
-            <div style={{ fontFamily: 'Barlow Condensed', letterSpacing: '0.25em', fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>
-              Resultado Final
-            </div>
-            <div style={{ width: 70 }} />
-          </div>
-
-          <div className="result-scoreboard">
-            <div className="team-result">
-              <div className="team-logo">{instantResult.local.nombre}</div>
-              <div className="score">{instantResult.local.goles}</div>
-            </div>
-            <div className="score-separator">-</div>
-            <div className="team-result">
-              <div className="score">{instantResult.visitante.goles}</div>
-              <div className="team-logo">{instantResult.visitante.nombre}</div>
-            </div>
-          </div>
-
-          <div className="result-details">
-            <div className="detail-section">
-              <h3>Goleadores {instantResult.local.nombre}</h3>
-              {instantResult.local.goleadores.length > 0 ? (
-                <ul>
-                  {instantResult.local.goleadores.map((g, i) => (
-                    <li key={i}>⚽ {g.minuto}' - {g.descripcion}</li>
-                  ))}
-                </ul>
-              ) : <p style={{color: 'var(--dimmed)', fontStyle: 'italic'}}>Sin goles</p>}
-            </div>
-            <div className="detail-section">
-              <h3>Goleadores {instantResult.visitante.nombre}</h3>
-              {instantResult.visitante.goleadores.length > 0 ? (
-                <ul>
-                  {instantResult.visitante.goleadores.map((g, i) => (
-                    <li key={i}>⚽ {g.minuto}' - {g.descripcion}</li>
-                  ))}
-                </ul>
-              ) : <p style={{color: 'var(--dimmed)', fontStyle: 'italic'}}>Sin goles</p>}
-            </div>
-          </div>
-        </div>
-      )}
+</div>
+        )}
     </div>
   );
 }

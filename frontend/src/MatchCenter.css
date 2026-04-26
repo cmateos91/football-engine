@@ -352,6 +352,90 @@
   font-size: 0.9rem;
 }
 
+.saltado-summary {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+.summary-section {
+  margin-bottom: 20px;
+}
+
+.summary-section:last-child {
+  margin-bottom: 0;
+}
+
+.summary-section h4 {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 12px;
+}
+
+.scorers-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+.scorer-team {
+  flex: 1;
+}
+
+.scorer-team .team-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  display: block;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
+}
+
+.scorer-team ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.scorer-team li {
+  font-size: 0.85rem;
+  color: var(--text);
+  padding: 0;
+  border: none;
+}
+
+.scorer-team .no-data {
+  color: var(--dimmed);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.cards-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+.cards-team {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cards-team span {
+  font-size: 0.75rem;
+  color: var(--dimmed);
+}
+
 .match-start-screen {
   display: flex;
   flex-direction: column;

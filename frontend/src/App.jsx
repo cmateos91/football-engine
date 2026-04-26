@@ -216,9 +216,19 @@ function App() {
                 <section className="roster-section">
                   <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}>
                     <h2>Plantilla</h2>
-                    <button className="play-btn-small" onClick={() => {
-                        setMatchData({ local: selectedTeam, visitante: teams.find(t => t.id === 149) || teams[0] });
-                        setActiveTab('match-center');
+                    <button className="play-btn-small" onClick={async () => {
+                        try {
+                          const rival = teams.find(t => t.id !== selectedTeam.id) || teams[0];
+                          const response = await axios.post(`${API_BASE}/simulations/match`, {
+                            local_id: selectedTeam.id,
+                            visitante_id: rival.id
+                          });
+                          const { simulation_id, local, visitante } = response.data;
+                          setMatchData({ id: simulation_id, local: { id: selectedTeam.id, nombre: local }, visitante: { id: rival.id, nombre: visitante } });
+                          setActiveTab('match-center');
+                        } catch (err) {
+                          console.error("Error iniciando simulación:", err);
+                        }
                     }}>
                       <Play size={14} fill="currentColor" /> Jugar Amistoso
                     </button>
