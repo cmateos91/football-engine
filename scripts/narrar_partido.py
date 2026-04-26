@@ -36,7 +36,7 @@ class Colores:
     CYAN = "\033[96m"
 
 
-def narrar_evento(evento, local_id, nombre_local, nombre_visita):
+def narrar_evento(evento, local_id, nombre_local, nombre_visita, evento_anterior=None):
     if not evento:
         return
 
@@ -47,6 +47,13 @@ def narrar_evento(evento, local_id, nombre_local, nombre_visita):
     emoji = "⏱️"
     color = Colores.RESET
     descripcion = evento.descripcion
+
+    # Evitar redundancia si es resultado de evento anterior
+    si_es_resultado = evento_anterior and evento_anterior.tipo in (
+        TipoEventoPartido.PENALTI,
+        TipoEventoPartido.TIRO_LIBRE,
+        TipoEventoPartido.CENTRO,
+    ) and evento.minuto == evento_anterior.minuto
 
     if evento.tipo == TipoEventoPartido.GOL:
         emoji = "⚽ "
@@ -87,6 +94,17 @@ def narrar_evento(evento, local_id, nombre_local, nombre_visita):
         xg = evento.metadatos.get("xg")
         if isinstance(xg, float):
             descripcion = f"{descripcion} (xG {xg:.2f})"
+
+    # Mejorar narración cuando es resultado de evento anterior
+    if si_es_resultado:
+        if evento.tipo == TipoEventoPartido.TIRO:
+            descripcion = "¡Remate directo!"
+        elif evento.tipo == TipoEventoPartido.GOL:
+            descripcion = f"¡GOOOOL! {descripcion}"
+        elif evento.tipo == TipoEventoPartido.PARADA:
+            descripcion = f"¡Parada importante de {descripcion.split()[-1]}!"
+        elif evento.tipo == TipoEventoPartido.CORNER:
+            descripcion = "¡Corner para continuar!"
 
     # Formatear el mensaje
     equipo_str = (
@@ -139,6 +157,7 @@ def ejecutar_narracion():
 
     marcador_local = 0
     marcador_visita = 0
+    evento_anterior = None
 
     # Bucle de simulación iterativa
     simulador = simular_partido_iterativo(ctx, parametros=params)
@@ -153,7 +172,8 @@ def ejecutar_narracion():
                     else:
                         marcador_visita += 1
 
-                narrar_evento(estado.evento_actual, madrid.id, madrid.nombre, barca.nombre)
+                narrar_evento(estado.evento_actual, madrid.id, madrid.nombre, barca.nombre, evento_anterior)
+                evento_anterior = estado.evento_actual
 
                 if estado.evento_actual.tipo == TipoEventoPartido.GOL:
                     print(

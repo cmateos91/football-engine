@@ -1,27 +1,148 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, Activity, ChevronLeft, Play, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
 import './MatchCenter.css';
 
 const WS_BASE = 'ws://localhost:8000/ws/v1';
+const LOCAL_COLOR = '#22c55e';
+const VISIT_COLOR = '#a78bfa';
 
-const EVENT_ICONS = {
-  GOL: '⚽',
-  TIRO: '🚀',
-  TARJETA_AMARILLA: '🟨',
-  TARJETA_ROJA: '🟥',
-  FALTA: '⚠️',
-  INICIO: '🏁',
-  FINAL: '🔚',
-  PARADA: '🧤',
-  RECUPERACION: '🔄',
-  PENALTI: '🎯',
-  TIRO_LIBRE: '🧱',
-  CORNER: '🚩',
-  CONTRAATAQUE: '⚡',
-  CENTRO: '🏹',
-  DUELO_AEREO: '🪂'
-};
+function getIniciales(nombre) {
+  return nombre.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+}
+
+function EventIcon({ tipo }) {
+  const t = (tipo || '').toLowerCase();
+  if (t === 'gol') return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <circle cx="8" cy="8" r="7" stroke="#fbbf24" strokeWidth="1.5"/>
+      <path d="M8 4l1.2 2.4L12 7l-2 1.9.47 2.7L8 10.4l-2.47 1.2L6 8.9 4 7l2.8-.6z" fill="#fbbf24"/>
+    </svg>
+  );
+  if (t === 'parada') return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <rect x="2" y="4" width="12" height="8" rx="1" stroke="#60a5fa" strokeWidth="1.5"/>
+      <path d="M8 4v8M2 8h12" stroke="#60a5fa" strokeWidth="1"/>
+    </svg>
+  );
+  if (['tarjeta_roja', 'falta', 'tarjeta_amarilla'].includes(t)) return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <circle cx="8" cy="8" r="7" stroke="#f87171" strokeWidth="1.5"/>
+      <path d="M5 5l6 6M11 5l-6 6" stroke="#f87171" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  );
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M3 8h10M9 4l4 4-4 4" stroke="#a3e635" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function eventColor(tipo) {
+  const t = (tipo || '').toLowerCase();
+  if (t === 'gol') return '#fbbf24';
+  if (t === 'parada') return '#60a5fa';
+  if (['tarjeta_roja', 'falta', 'tarjeta_amarilla'].includes(t)) return '#f87171';
+  return '#a3e635';
+}
+
+function TeamBadge({ nombre, color }) {
+  return (
+    <div style={{
+      width: 56, height: 56, borderRadius: '50%',
+      background: `${color}22`,
+      border: `2px solid ${color}`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 800, fontSize: 18, color, letterSpacing: '0.05em' }}>
+        {nombre ? getIniciales(nombre) : '--'}
+      </span>
+    </div>
+  );
+}
+
+function PosesionBar({ posLocal, localColor, visitColor, localNombre, visitNombre }) {
+  return (
+    <div className="mc-posesion-wrap">
+      <div className="mc-posesion-row">
+        <span className="mc-posesion-pct" style={{ color: localColor, textAlign: 'right' }}>{posLocal}%</span>
+        <div className="mc-posesion-track">
+          <div
+            className="mc-posesion-fill"
+            style={{
+              width: posLocal + '%',
+              background: `linear-gradient(90deg, ${localColor}, ${localColor}cc)`,
+              boxShadow: `0 0 8px ${localColor}88`,
+            }}
+          />
+        </div>
+        <span className="mc-posesion-pct" style={{ color: visitColor }}>{100 - posLocal}%</span>
+      </div>
+      <div className="mc-posesion-labels">
+        <span className="mc-posesion-label">{localNombre}</span>
+        <span className="mc-posesion-label" style={{ letterSpacing: '0.1em', textTransform: 'uppercase', fontSize: 10 }}>Posesión</span>
+        <span className="mc-posesion-label" style={{ textAlign: 'right' }}>{visitNombre}</span>
+      </div>
+    </div>
+  );
+}
+
+function Timeline({ minutoActual }) {
+  const pct = Math.min((minutoActual / 90) * 100, 100);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ position: 'relative', height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'visible' }}>
+        <div style={{ position: 'absolute', left: '50%', top: -3, width: 1, height: 10, background: 'rgba(255,255,255,0.15)' }} />
+        <div style={{
+          position: 'absolute', left: 0, top: 0, bottom: 0,
+          width: pct + '%',
+          background: 'linear-gradient(90deg,#22c55e,#a3e635)',
+          borderRadius: 2,
+          transition: 'width 0.8s linear',
+          boxShadow: '0 0 10px #22c55e66',
+        }} />
+        <div style={{
+          position: 'absolute', top: '50%',
+          left: `calc(${pct}% - 7px)`,
+          transform: 'translateY(-50%)',
+          width: 14, height: 14, borderRadius: '50%',
+          background: 'white', border: '2px solid #22c55e',
+          transition: 'left 0.8s linear',
+          boxShadow: '0 0 8px #22c55e',
+        }} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--muted)', fontFamily: 'Barlow Condensed', letterSpacing: '0.06em' }}>
+        <span>0'</span><span>45'</span><span>90'</span>
+      </div>
+    </div>
+  );
+}
+
+function EventItem({ ev, isLocal, animate }) {
+  const color = isLocal ? LOCAL_COLOR : VISIT_COLOR;
+  const tipo = (ev.tipo || '').toLowerCase();
+  const isGol = tipo === 'gol';
+
+  return (
+    <div
+      className={`mc-event-item ${animate ? (isLocal ? 'slide-left' : 'slide-right') : ''}`}
+      style={{
+        background: isGol
+          ? `linear-gradient(135deg, ${color}22, ${color}08)`
+          : 'rgba(255,255,255,0.035)',
+        border: isGol ? `1px solid ${color}55` : '1px solid rgba(255,255,255,0.06)',
+      }}
+    >
+      {isGol && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: `radial-gradient(ellipse at ${isLocal ? 'left' : 'right'}, ${color}18, transparent 70%)`,
+          pointerEvents: 'none',
+        }} />
+      )}
+      <EventIcon tipo={ev.tipo} />
+      <span className="mc-event-desc" style={{ color: eventColor(ev.tipo) }}>{ev.descripcion}</span>
+    </div>
+  );
+}
 
 function MatchCenter({ onBack, local, visitante }) {
   const [minuto, setMinuto] = useState(0);
@@ -31,166 +152,161 @@ function MatchCenter({ onBack, local, visitante }) {
   const [posesion, setPosesion] = useState([50, 50]);
   const [estado, setEstado] = useState('conectando');
   const [goalFlash, setGoalFlash] = useState(false);
+  const [lastGolIsLocal, setLastGolIsLocal] = useState(null);
+  const [scoreAnim, setScoreAnim] = useState(false);
   const socketRef = useRef(null);
 
   useEffect(() => {
-    // Iniciar conexión WebSocket
-    const simId = 'test-match'; // En producción esto vendría del POST /simulations/match
+    const simId = 'test-match';
     const socket = new WebSocket(`${WS_BASE}/match/${simId}`);
     socketRef.current = socket;
 
-    socket.onopen = () => {
-      setEstado('en_vivo');
-      console.log("WebSocket Connected");
-    };
+    socket.onopen = () => setEstado('en_vivo');
 
     socket.onmessage = (event) => {
       const msg = JSON.parse(event.data);
-      if (msg.tipo === 'EVENTO') {
-        const { minuto, tipo_evento, descripcion, marcador, posesion } = msg.data;
-        
-        setMinuto(minuto);
-        setPosesion(posesion);
-        
-        // Si hay gol, activar animación
-        if (tipo_evento === 'GOL') {
-          setGoalFlash(true);
-          setTimeout(() => setGoalFlash(false), 2000);
-          setGolesL(marcador[0]);
-          setGolesV(marcador[1]);
-        }
+      if (msg.tipo !== 'EVENTO') return;
+      const { minuto: min, tipo_evento, descripcion, marcador, posesion: pos, equipo_id } = msg.data;
 
-        const newEvent = {
-          id: Date.now(),
-          minuto,
-          tipo: tipo_evento,
-          descripcion,
-          isLocal: msg.data.equipo_id === 154 // TODO: Usar ID real del local
-        };
+      setMinuto(min);
+      if (pos) setPosesion(pos);
 
-        setEventos(prev => [newEvent, ...prev]);
+      const isLocal = equipo_id === local?.id;
 
-        if (tipo_evento === 'FINAL') {
-          setEstado('finalizado');
-        }
+      if (tipo_evento === 'GOL') {
+        setGolesL(marcador[0]);
+        setGolesV(marcador[1]);
+        setGoalFlash(true);
+        setScoreAnim(true);
+        setLastGolIsLocal(isLocal);
+        setTimeout(() => { setGoalFlash(false); setScoreAnim(false); }, 1500);
       }
+
+      setEventos(prev => [{
+        id: Date.now(),
+        minuto: min,
+        tipo: tipo_evento,
+        descripcion,
+        isLocal,
+      }, ...prev].slice(0, 30));
+
+      if (tipo_evento === 'FINAL') setEstado('finalizado');
     };
 
-    socket.onclose = () => {
-      setEstado('finalizado');
-      console.log("WebSocket Closed");
-    };
+    socket.onclose = () => setEstado('finalizado');
 
-    return () => {
-      if (socketRef.current) socketRef.current.close();
-    };
-  }, []);
+    return () => { if (socketRef.current) socketRef.current.close(); };
+  }, [local?.id]);
+
+  const goalColor = lastGolIsLocal ? LOCAL_COLOR : VISIT_COLOR;
 
   return (
-    <div className={`match-center-view ${goalFlash ? 'goal-flash' : ''}`}>
-      <header className="match-header glass">
+    <div
+      className="match-center-wrap"
+      style={{
+        background: goalFlash
+          ? `radial-gradient(ellipse 60% 40% at 50% 20%, ${goalColor}18, transparent 70%)`
+          : 'transparent',
+      }}
+    >
+      {/* Header */}
+      <div className="mc-header">
         <button className="back-btn-match" onClick={onBack}>
-          <ChevronLeft size={20} /> Volver
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Volver
         </button>
-        <div className="match-title">
-          <Trophy size={18} />
-          <span>LALIGA EA SPORTS</span>
+        <div style={{ fontFamily: 'Barlow Condensed', letterSpacing: '0.25em', fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>
+          Motor de Fútbol
         </div>
-      </header>
+        <div style={{ width: 70 }} />
+      </div>
 
-      <div className="scoreboard-container glass">
-        <div className="scoreboard-layout">
+      {/* Scoreboard */}
+      <div
+        className="mc-scoreboard"
+        style={{ boxShadow: goalFlash ? `0 0 60px 4px ${goalColor}33` : 'none' }}
+      >
+        <div className="mc-scoreboard-lines" />
+
+        <div className="mc-team-row">
           {/* Local */}
-          <div className="team-score-info local">
-            <div className="team-badge-large">{local.nombre_corto}</div>
-            <h2>{local.nombre}</h2>
+          <div className="mc-team-local">
+            <TeamBadge nombre={local?.nombre} color={LOCAL_COLOR} />
+            <span className="mc-team-name" style={{ textAlign: 'right' }}>{local?.nombre}</span>
           </div>
 
           {/* Score */}
-          <div className="score-main">
-            <div className="score-numbers">
-              <motion.span 
-                key={golesL}
-                initial={{ scale: 1 }}
-                animate={goalFlash ? { scale: [1, 1.3, 1], color: ['#fff', '#fbbf24', '#fff'] } : {}}
-                className="score-digit"
+          <div className="mc-score-center">
+            <div className="mc-score-numbers">
+              <span
+                className="mc-score-digit"
+                style={{ animation: scoreAnim && lastGolIsLocal ? 'scorePop 0.6s ease forwards' : 'none' }}
               >
                 {golesL}
-              </motion.span>
-              <span className="score-divider">—</span>
-              <motion.span 
-                key={golesV}
-                initial={{ scale: 1 }}
-                animate={goalFlash ? { scale: [1, 1.3, 1], color: ['#fff', '#fbbf24', '#fff'] } : {}}
-                className="score-digit"
+              </span>
+              <span className="mc-score-sep">—</span>
+              <span
+                className="mc-score-digit"
+                style={{ animation: scoreAnim && lastGolIsLocal === false ? 'scorePop 0.6s ease forwards' : 'none' }}
               >
                 {golesV}
-              </motion.span>
+              </span>
             </div>
-            <div className="match-status-pill">
-              {estado === 'en_vivo' && <span className="live-dot"></span>}
-              <span className="match-time">{estado === 'finalizado' ? 'FINAL' : `${minuto}'`}</span>
+
+            <div className="mc-status-row">
+              {estado === 'en_vivo' && <span className="mc-live-dot" />}
+              {estado === 'finalizado' && <span className="mc-fin-dot" />}
+              <span
+                className="mc-status-time"
+                style={{ color: estado === 'en_vivo' ? '#ef4444' : 'var(--dimmed)' }}
+              >
+                {estado === 'conectando' ? '···' : estado === 'finalizado' ? 'FIN' : `${minuto}'`}
+              </span>
+              {estado === 'en_vivo' && <span className="mc-status-live">EN VIVO</span>}
             </div>
           </div>
 
           {/* Visitante */}
-          <div className="team-score-info visitante">
-            <div className="team-badge-large">{visitante.nombre_corto}</div>
-            <h2>{visitante.nombre}</h2>
+          <div className="mc-team-visit">
+            <TeamBadge nombre={visitante?.nombre} color={VISIT_COLOR} />
+            <span className="mc-team-name">{visitante?.nombre}</span>
           </div>
         </div>
 
-        {/* Possession Bar */}
-        <div className="possession-stats">
-          <div className="possession-labels">
-            <span>{posesion[0]}%</span>
-            <span className="stat-name">POSESIÓN</span>
-            <span>{posesion[1]}%</span>
-          </div>
-          <div className="possession-track">
-            <div 
-              className="possession-fill local" 
-              style={{ width: `${posesion[0]}%` }}
-            ></div>
-          </div>
-        </div>
+        <PosesionBar
+          posLocal={posesion[0]}
+          localColor={LOCAL_COLOR}
+          visitColor={VISIT_COLOR}
+          localNombre={local?.nombre}
+          visitNombre={visitante?.nombre}
+        />
       </div>
 
-      <main className="match-content-grid">
-        {/* Timeline */}
-        <section className="timeline-section glass">
-          <div className="timeline-track">
-            <div className="timeline-progress" style={{ width: `${(minuto/90)*100}%` }}></div>
-            <div className="timeline-marker" style={{ left: `${(minuto/90)*100}%` }}></div>
-          </div>
-          <div className="timeline-labels">
-            <span>0'</span>
-            <span>45'</span>
-            <span>90'</span>
-          </div>
-        </section>
+      {/* Timeline */}
+      <div className="mc-timeline-wrap">
+        <Timeline minutoActual={minuto} />
+      </div>
 
-        {/* Event Feed */}
-        <section className="event-feed-section">
-          <h3>Sucedido en el partido</h3>
-          <div className="event-list hide-scroll">
-            <AnimatePresence>
-              {eventos.map((ev) => (
-                <motion.div 
-                  key={ev.id}
-                  initial={{ opacity: 0, x: ev.isLocal ? -20 : 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className={`event-item-card ${ev.tipo === 'GOL' ? 'is-goal' : ''}`}
-                >
-                  <span className="event-min">{ev.minuto}'</span>
-                  <span className="event-icon-box">{EVENT_ICONS[ev.tipo] || '•'}</span>
-                  <p className="event-desc">{ev.descripcion}</p>
-                </motion.div>
-              ))}
-            </AnimatePresence>
+      {/* Event Feed */}
+      {eventos.length > 0 && (
+        <div>
+          <div className="mc-feed-title">Eventos del partido</div>
+          <div
+            className="hide-scroll"
+            style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 420, overflowY: 'auto', paddingRight: 4, scrollbarWidth: 'none' }}
+          >
+            {eventos.map((ev, i) => (
+              <div key={ev.id} className="mc-event-row">
+                <div>{ev.isLocal && <EventItem ev={ev} isLocal={true} animate={i === 0} />}</div>
+                <div className="mc-event-min">{ev.minuto}'</div>
+                <div>{!ev.isLocal && <EventItem ev={ev} isLocal={false} animate={i === 0} />}</div>
+              </div>
+            ))}
           </div>
-        </section>
-      </main>
+        </div>
+      )}
     </div>
   );
 }

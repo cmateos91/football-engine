@@ -578,9 +578,15 @@ def _resolver_tiro(
     parametros: ParametrosSimulacionBaseline,
     tipo_jugada: str = "open_play",
     es_balon_parado: bool = False,
+    tirador_previo: Jugador | None = None,
 ) -> list[EventoPartido]:
     atacante.tiros += 1
-    tirador = _elegir_tirador(generador, atacante.alineacion.titulares)
+    if tirador_previo is not None:
+        tirador = tirador_previo
+    else:
+        tirador = _elegir_tirador_para_contexto(
+            generador, atacante.alineacion.titulares, tipo_jugada=tipo_jugada
+        )
 
     posicion_tiro = (estado_espacial.posicion_balon.x, estado_espacial.posicion_balon.y)
     resultado_xg = calcular_xg(
@@ -738,7 +744,9 @@ def _resolver_centro(
 
     if generador.random() * 100 < calidad_centro - dificultad:
         # Centro exitoso -> Duelo aéreo
-        rematador = _elegir_tirador(generador, atacante.alineacion.titulares)
+        rematador = _elegir_tirador_para_contexto(
+            generador, atacante.alineacion.titulares, tipo_jugada="cross"
+        )
         defensor_aire = _elegir_defensor_agresivo(generador, defensor.alineacion.titulares)
 
         if _resolver_duelo_aereo(generador, rematador, defensor_aire):
@@ -771,6 +779,7 @@ def _resolver_centro(
                 parametros=parametros,
                 tipo_jugada="cross",
                 es_balon_parado=es_balon_parado,
+                tirador_previo=rematador,
             )
         else:
             # Si el defensor gana el duelo, hay una pequeña probabilidad de autogol
@@ -963,7 +972,9 @@ def _resolver_penalti(
     estado_espacial: EstadoEspacialPartido,
     parametros: ParametrosSimulacionBaseline,
 ) -> list[EventoPartido]:
-    tirador = _elegir_tirador(generador, atacante.alineacion.titulares)
+    tirador = _elegir_tirador_para_contexto(
+        generador, atacante.alineacion.titulares, tipo_jugada="penalty"
+    )
     evento_penalti = EventoPartido(
         tipo=TipoEventoPartido.PENALTI,
         minuto=minuto,
@@ -993,6 +1004,7 @@ def _resolver_penalti(
             parametros=parametros,
             tipo_jugada="penalty",
             es_balon_parado=True,
+            tirador_previo=tirador,
         ),
     ]
 
@@ -1089,7 +1101,9 @@ def _resolver_falta_directa(
     estado_espacial: EstadoEspacialPartido,
     parametros: ParametrosSimulacionBaseline,
 ) -> list[EventoPartido]:
-    tirador = _elegir_tirador(generador, atacante.alineacion.titulares)
+    tirador = _elegir_tirador_para_contexto(
+        generador, atacante.alineacion.titulares, tipo_jugada="set_piece_fk"
+    )
     evento_fk = EventoPartido(
         tipo=TipoEventoPartido.TIRO_LIBRE,
         minuto=minuto,
@@ -1116,6 +1130,7 @@ def _resolver_falta_directa(
             parametros=parametros,
             tipo_jugada="set_piece_fk",
             es_balon_parado=True,
+            tirador_previo=tirador,
         ),
     ]
 
@@ -1492,6 +1507,43 @@ def _elegir_tirador(generador: Random, jugadores: tuple[Jugador, ...]) -> Jugado
         )
         pesos.append(max(0.1, peso))
     return generador.choices(candidatos, weights=pesos, k=1)[0]
+
+
+def _elegir_tirador_para_contexto(
+    generador: Random,
+    jugadores: tuple[Jugador, ...],
+    tipo_jugada: str = "open_play",
+) -> Jugador:
+    candidatos = list(jugadores)
+
+    if tipo_jugada == "penalty":
+        delanteros = [j for j in candidatos if j.posicion in (
+            PosicionJugador.DELANTERO, PosicionJugador.EXTREMO
+        )]
+        if delanteros:
+            candidatos = delanteros
+
+    elif tipo_jugada == "set_piece_fk":
+        especialistas = sorted(
+            candidatos,
+            key=lambda j: (
+                j.atributos.potencia_tiro * 0.35
+                + j.atributos.pase_elevado * 0.25
+                + j.atributos.efecto * 0.20
+                + j.atributos.finalizacion * 0.20
+            ),
+            reverse=True
+        )[:5]
+        candidatos = especialistas
+
+    elif tipo_jugada == "cross":
+        delanteros = [j for j in candidatos if j.posicion in (
+            PosicionJugador.DELANTERO, PosicionJugador.EXTREMO, PosicionJugador.MEDIAPUNTA
+        )]
+        if delanteros:
+            candidatos = delanteros
+
+    return _elegir_tirador(generador, tuple(candidatos))
 
 
 def _elegir_jugador_para_pase(generador: Random, jugadores: tuple[Jugador, ...]) -> Jugador:
