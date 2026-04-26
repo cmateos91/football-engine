@@ -142,9 +142,8 @@ async def match_websocket(websocket: WebSocket, sim_id: str):
     total_iteraciones = 0
     ultima_clave_evento: tuple[int | None, str, str] | None = None
     ultimo_minuto_por_tipo: dict[str, int] = {}
-    minuto_actual = 0
+minuto_actual = 0
 
-    # Configuración de tiempos (segundos)
     DELAYS = {
         "GOL": 4.5,
         "TIRO": 2.2,
@@ -157,8 +156,7 @@ async def match_websocket(websocket: WebSocket, sim_id: str):
         "FINAL": 3.0,
     }
     DEFAULT_DELAY = 1.2
-    TICK_DELAY = 0.1  # Tiempo por minuto sin eventos importantes
-
+    TICK_DELAY = 0.1
     try:
         for estado in simulador:
             total_iteraciones += 1
@@ -189,8 +187,7 @@ async def match_websocket(websocket: WebSocket, sim_id: str):
                     estado.evento_actual.tipo.name,
                     estado.evento_actual.descripcion or "",
                 )
-                minuto_ultimo_tipo = ultimo_minuto_por_tipo.get(estado.evento_actual.tipo.name, -99)
-                
+minuto_ultimo_tipo = ultimo_minuto_por_tipo.get(estado.evento_actual.tipo.name, -99)
                 if clave == ultima_clave_evento:
                     continue
                 if (

@@ -11,13 +11,16 @@ from motor_futbol.dominio.espacial import ZonaCampo
 class NarradorPartido:
     """Genera textos variados evitando repeticiones inmediatas."""
 
-    def __init__(self, generador: Random) -> None:
+def __init__(self, generador: Random) -> None:
         self._generador = generador
-        self._recientes: dict[str, deque[str]] = defaultdict(lambda: deque(maxlen=3))
+        self._recientes: dict[str, deque[str]] = defaultdict(lambda: deque(maxlen=5))
 
     def elegir(self, clave: str, opciones: tuple[str, ...]) -> str:
         recientes = self._recientes[clave]
         candidatas = [opcion for opcion in opciones if opcion not in recientes]
+        if len(candidatas) <= 1 and len(opciones) > 2:
+            ultima = recientes[-1] if recientes else None
+            candidatas = [opcion for opcion in opciones if opcion != ultima]
         if not candidatas:
             candidatas = list(opciones)
         elegida = self._generador.choice(candidatas)

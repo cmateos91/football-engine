@@ -760,9 +760,10 @@ def _resolver_centro(
     estado_espacial: EstadoEspacialPartido,
     parametros: ParametrosSimulacionBaseline,
     es_balon_parado: bool = False,
+    centrador_fijado: Jugador | None = None,
 ) -> list[EventoPartido]:
     """Resuelve una jugada de centro al área."""
-    pasador = _elegir_jugador_para_pase(generador, atacante.alineacion.titulares)
+    pasador = centrador_fijado or _elegir_jugador_para_pase(generador, atacante.alineacion.titulares)
     eventos = [
         EventoPartido(
             tipo=TipoEventoPartido.CENTRO,
@@ -1123,6 +1124,7 @@ def _resolver_corner(
             estado_espacial=estado_espacial,
             parametros=parametros,
             es_balon_parado=True,
+            centrador_fijado=pasador,
         ),
     ]
 
@@ -1174,12 +1176,18 @@ def _resolver_falta_directa(
 def _descripcion_recuperacion(
     *, narrador: NarradorPartido, equipo: str, causa: str, zona: ZonaCampo
 ) -> str:
+    causa_txt = causa.lower()
     return narrador.elegir(
         "recuperacion",
         (
-            f"{equipo} recupera tras {causa.lower()} en {narrador.zona(zona)}",
-            f"Se rompe la posesión por {causa.lower()}: vuelve a mandar {equipo}",
-            f"Buen robo de {equipo}; nace en {narrador.zona(zona)}",
+            f"Robo de {equipo} en {narrador.zona(zona)} tras {causa_txt}",
+            f"{equipo} muerde y recupera por {causa_txt}",
+            f"Se corta la jugada: vuelve la pelota para {equipo}",
+            f"{equipo} lee la acción y recupera en campo rival",
+            f"Pérdida forzada por {causa_txt}; la tiene {equipo}",
+            f"{equipo} roba y ordena desde {narrador.zona(zona)}",
+            f"Buena presión: {equipo} vuelve a mandar",
+            f"Cambio de dueño del balón, ahora para {equipo}",
         ),
     )
 
@@ -1207,6 +1215,9 @@ def _descripcion_tiro(
             f"Disparo de {jugador} para {equipo} {cierre}",
             f"{jugador} prueba desde {narrador.zona(zona)}",
             f"Remate de {jugador}; {equipo} acelera",
+            f"{jugador} suelta el latigazo para {equipo}",
+            f"Finalización de {jugador} tras atacar el espacio",
+            f"{equipo} encuentra hueco y {jugador} arma el tiro",
         ),
     )
 
@@ -1301,6 +1312,9 @@ def _descripcion_falta(*, narrador: NarradorPartido, infractor: str, zona: ZonaC
             f"Falta de {infractor} en {narrador.zona(zona)}",
             f"{infractor} llega tarde y derriba al rival",
             f"Contacto duro de {infractor}; el árbitro no duda",
+            f"{infractor} frena la transición con infracción",
+            f"Infracción señalada a {infractor} por juego brusco",
+            f"Entrada de {infractor}; se detiene el juego",
         ),
     )
 
