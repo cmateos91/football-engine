@@ -89,7 +89,13 @@ def simular_partido_baseline(
 
     total_posesiones = _resolver_total_posesiones(generador, parametros_resueltos)
     estado_espacial = EstadoEspacialPartido()
-    eventos: list[EventoPartido] = [EventoPartido(tipo=TipoEventoPartido.INICIO, minuto=0)]
+    eventos: list[EventoPartido] = [
+        EventoPartido(
+            tipo=TipoEventoPartido.INICIO,
+            minuto=0,
+            descripcion="¡Arranca el partido!",
+        )
+    ]
 
     compartidas_local, compartidas_visitante = _calcular_cuotas_posesion(
         estado_local, estado_visitante
@@ -104,7 +110,13 @@ def simular_partido_baseline(
         if minuto == 45 and not any(
             evento.tipo is TipoEventoPartido.DESCANSO for evento in eventos
         ):
-            eventos.append(EventoPartido(tipo=TipoEventoPartido.DESCANSO, minuto=45))
+            eventos.append(
+                EventoPartido(
+                    tipo=TipoEventoPartido.DESCANSO,
+                    minuto=45,
+                    descripcion="Final de la primera parte. Los jugadores se retiran a vestuarios.",
+                )
+            )
 
         # Determinar nuevo poseedor con inercia
         # Si el equipo ya tenia el balon, tiene un bonus por conservarlo
@@ -161,7 +173,13 @@ def simular_partido_baseline(
         )
         eventos.extend(eventos_posesion)
 
-    eventos.append(EventoPartido(tipo=TipoEventoPartido.FINAL, minuto=95))
+    eventos.append(
+        EventoPartido(
+            tipo=TipoEventoPartido.FINAL,
+            minuto=95,
+            descripcion="¡Final del partido! El árbitro señala el camino a los vestuarios.",
+        )
+    )
 
     estado_final = EstadoPartido(
         fase=FasePartido.FINALIZADO,
@@ -213,7 +231,13 @@ def simular_partido_iterativo(
 
     total_posesiones = _resolver_total_posesiones(generador, parametros_resueltos)
     estado_espacial = EstadoEspacialPartido()
-    eventos: list[EventoPartido] = [EventoPartido(tipo=TipoEventoPartido.INICIO, minuto=0)]
+    eventos: list[EventoPartido] = [
+        EventoPartido(
+            tipo=TipoEventoPartido.INICIO,
+            minuto=0,
+            descripcion="¡Arranca el partido!",
+        )
+    ]
 
     yield EstadoIteracion.desde_estado(
         minuto=0,
@@ -239,7 +263,13 @@ def simular_partido_iterativo(
         if minuto == 45 and not any(
             evento.tipo is TipoEventoPartido.DESCANSO for evento in eventos
         ):
-            eventos.append(EventoPartido(tipo=TipoEventoPartido.DESCANSO, minuto=45))
+            eventos.append(
+                EventoPartido(
+                    tipo=TipoEventoPartido.DESCANSO,
+                    minuto=45,
+                    descripcion="Final de la primera parte. Los jugadores se retiran a vestuarios.",
+                )
+            )
             yield EstadoIteracion.desde_estado(
                 minuto=45,
                 posesion_id=None,
@@ -323,7 +353,13 @@ def simular_partido_iterativo(
                 goles_visitante=estado_visitante.goles,
             )
 
-    eventos.append(EventoPartido(tipo=TipoEventoPartido.FINAL, minuto=95))
+    eventos.append(
+        EventoPartido(
+            tipo=TipoEventoPartido.FINAL,
+            minuto=95,
+            descripcion="¡Final del partido! El árbitro señala el camino a los vestuarios.",
+        )
+    )
 
     yield EstadoIteracion.desde_estado(
         minuto=95,

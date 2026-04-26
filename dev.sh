@@ -29,7 +29,7 @@ trap cleanup EXIT INT TERM
 # Levantar Backend (FastAPI)
 echo -e "${BLUE}📦 Backend (FastAPI en puerto 8000)...${NC}"
 cd "$BACKEND_DIR"
-python -m uvicorn src.motor_futbol.api.main:app --reload --host 0.0.0.0 --port 8000 &
+PYTHONPATH=src ./.venv/bin/python -m uvicorn motor_futbol.api.main:app --reload --host 0.0.0.0 --port 8000 &
 BACKEND_PID=$!
 sleep 2
 

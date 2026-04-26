@@ -144,7 +144,8 @@ function EventItem({ ev, isLocal, animate }) {
   );
 }
 
-function MatchCenter({ onBack, local, visitante }) {
+function MatchCenter({ onBack, matchData }) {
+  const { id: simId, local, visitante } = matchData;
   const [minuto, setMinuto] = useState(0);
   const [golesL, setGolesL] = useState(0);
   const [golesV, setGolesV] = useState(0);
@@ -157,7 +158,6 @@ function MatchCenter({ onBack, local, visitante }) {
   const socketRef = useRef(null);
 
   useEffect(() => {
-    const simId = 'test-match';
     const socket = new WebSocket(`${WS_BASE}/match/${simId}`);
     socketRef.current = socket;
 
@@ -165,6 +165,18 @@ function MatchCenter({ onBack, local, visitante }) {
 
     socket.onmessage = (event) => {
       const msg = JSON.parse(event.data);
+      
+      if (msg.tipo === 'TICK') {
+        const { minuto: min, marcador, posesion: pos } = msg.data;
+        setMinuto(min);
+        if (pos) setPosesion(pos);
+        if (marcador) {
+          setGolesL(marcador[0]);
+          setGolesV(marcador[1]);
+        }
+        return;
+      }
+
       if (msg.tipo !== 'EVENTO') return;
       const { minuto: min, tipo_evento, descripcion, marcador, posesion: pos, equipo_id } = msg.data;
 
