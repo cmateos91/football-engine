@@ -11,7 +11,9 @@ import {
   Search,
   ChevronRight,
   TrendingUp,
-  Activity
+  Activity,
+  Zap,
+  X
 } from 'lucide-react';
 import './App.css';
 import MatchCenter from './MatchCenter';
@@ -24,6 +26,7 @@ function App() {
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [loading, setLoading] = useState(true);
   const [matchData, setMatchData] = useState(null);
+  const [instantResult, setInstantResult] = useState(null);
 
   useEffect(() => {
     fetchTeams();
@@ -54,7 +57,6 @@ function App() {
   };
 
   const startQuickMatch = async () => {
-    // Para el demo, usamos Madrid (154) vs Barça (149)
     try {
       const response = await axios.post(`${API_BASE}/simulations/match`, {
         local_id: 154,
@@ -66,6 +68,27 @@ function App() {
     } catch (err) {
       console.error("Error iniciando simulación:", err);
     }
+  };
+
+  const startInstantMatch = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.post(`${API_BASE}/simulations/match/instant`, {
+        local_id: 154,
+        visitante_id: 149
+      });
+      setInstantResult(response.data);
+      setActiveTab('instant-result');
+      setLoading(false);
+    } catch (err) {
+      console.error("Error en simulación instantánea:", err);
+      setLoading(false);
+    }
+  };
+
+  const closeInstantResult = () => {
+    setInstantResult(null);
+    setActiveTab('home');
   };
 
   return (
@@ -89,6 +112,12 @@ function App() {
             onClick={() => setActiveTab('players')}
             icon={<Users size={20} />} 
             label="Jugadores" 
+          />
+          <NavItem 
+            active={activeTab === 'instant-result'} 
+            onClick={startInstantMatch}
+            icon={<Zap size={20} />} 
+            label="Resultado Instantáneo" 
           />
           <NavItem 
             active={activeTab === 'match-center'} 
@@ -251,41 +280,99 @@ function App() {
               </motion.div>
             )}
 
+            {activeTab === 'instant-result' && instantResult && (
+              <motion.div
+                key="instant-result"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.05 }}
+                className="instant-result-view"
+              >
+                <div className="result-header">
+                  <h2>Resultado del Partido</h2>
+                  <button className="close-btn" onClick={closeInstantResult}>
+                    <X size={24} />
+                  </button>
+                </div>
+                
+                <div className="result-scoreboard">
+                  <div className="team-result">
+                    <div className="team-logo">{instantResult.local.nombre}</div>
+                    <div className="score">{instantResult.local.goles}</div>
+                  </div>
+                  <div className="score-separator">-</div>
+                  <div className="team-result">
+                    <div className="score">{instantResult.visitante.goles}</div>
+                    <div className="team-logo">{instantResult.visitante.nombre}</div>
+                  </div>
+                </div>
+
+                <div className="result-details">
+                  <div className="detail-section">
+                    <h3>Goleadores {instantResult.local.nombre}</h3>
+                    {instantResult.local.goleadores.length > 0 ? (
+                      <ul>
+                        {instantResult.local.goleadores.map((g, i) => (
+                          <li key={i}>⚽ {g.minuto}' - {g.descripcion}</li>
+                        ))}
+                      </ul>
+                    ) : <p className="no-data">Sin goles</p>}
+                  </div>
+                  <div className="detail-section">
+                    <h3>Goleadores {instantResult.visitante.nombre}</h3>
+                    {instantResult.visitante.goleadores.length > 0 ? (
+                      <ul>
+                        {instantResult.visitante.goleadores.map((g, i) => (
+                          <li key={i}>⚽ {g.minuto}' - {g.descripcion}</li>
+                        ))}
+                      </ul>
+                    ) : <p className="no-data">Sin goles</p>}
+                  </div>
+                </div>
+
+                <div className="result-cards">
+                  <div className="card-section">
+                    <h3>Tarjetas {instantResult.local.nombre}</h3>
+                    {instantResult.local.tarjetas.length > 0 ? (
+                      <ul>
+                        {instantResult.local.tarjetas.map((t, i) => (
+                          <li key={i}>{t.minuto}' - {t.descripcion}</li>
+                        ))}
+                      </ul>
+                    ) : <p className="no-data">Sin tarjetas</p>}
+                  </div>
+                  <div className="card-section">
+                    <h3>Tarjetas {instantResult.visitante.nombre}</h3>
+                    {instantResult.visitante.tarjetas.length > 0 ? (
+                      <ul>
+                        {instantResult.visitante.tarjetas.map((t, i) => (
+                          <li key={i}>{t.minuto}' - {t.descripcion}</li>
+                        ))}
+                      </ul>
+                    ) : <p className="no-data">Sin tarjetas</p>}
+                  </div>
+                </div>
+
+                <div className="result-timeline">
+                  <h3> Cronología</h3>
+                  <div className="timeline-list">
+                    {instantResult.eventos.slice(0, 20).map((ev, i) => (
+                      <div key={i} className={`timeline-item ${ev.tipo.toLowerCase()}`}>
+                        <span className="timeline-minute">{ev.minuto}'</span>
+                        <span className="timeline-icon">
+                          {ev.tipo === 'GOL' ? '⚽' : ev.tipo === 'TARJETA_AMARILLA' ? '🟨' : ev.tipo === 'TARJETA_ROJA' ? '🟥' : ev.tipo === 'FALTA' ? '⚠️' : ev.tipo === 'TIRO' ? '🚀' : ev.tipo === 'PARADA' ? '🧤' : '•'}
+                        </span>
+                        <span className="timeline-desc">{ev.descripcion}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
           </AnimatePresence>
         </div>
       </main>
-
-      <style jsx global>{`
-        .play-btn-large {
-          background: var(--primary);
-          color: var(--bg-main);
-          font-weight: 800;
-          padding: 12px 24px;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          border-radius: 30px;
-          box-shadow: 0 0 20px var(--primary-glow);
-          font-family: 'Barlow Condensed', sans-serif;
-          text-transform: uppercase;
-          letter-spacing: 0.1em;
-        }
-
-        .play-btn-small {
-          background: var(--bg-accent);
-          color: var(--primary);
-          border: 1px solid var(--primary);
-          font-weight: 700;
-          padding: 8px 16px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          border-radius: 20px;
-          font-size: 0.8rem;
-          font-family: 'Barlow Condensed', sans-serif;
-          text-transform: uppercase;
-        }
-      `}</style>
     </div>
   );
 }

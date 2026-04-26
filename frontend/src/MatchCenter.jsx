@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
 import './MatchCenter.css';
+
+const API_BASE = 'http://localhost:8000/api/v1';
 
 const WS_BASE = 'ws://localhost:8000/ws/v1';
 const LOCAL_COLOR = '#22c55e';
@@ -151,17 +154,50 @@ function MatchCenter({ onBack, matchData }) {
   const [golesV, setGolesV] = useState(0);
   const [eventos, setEventos] = useState([]);
   const [posesion, setPosesion] = useState([50, 50]);
-  const [estado, setEstado] = useState('conectando');
+  const [estado, setEstado] = useState('preparado'); // preparado -> conectando -> en_vivo -> saltado/finalizado
   const [goalFlash, setGoalFlash] = useState(false);
   const [lastGolIsLocal, setLastGolIsLocal] = useState(null);
   const [scoreAnim, setScoreAnim] = useState(false);
+  const [instantResult, setInstantResult] = useState(null);
+  const [connectTrigger, setConnectTrigger] = useState(0);
   const socketRef = useRef(null);
+  const socketInitialized = useRef(false);
+
+  const skipToResult = async () => {
+    if (socketRef.current) {
+      socketRef.current.close();
+    }
+    try {
+      const response = await axios.post(`${API_BASE}/simulations/match/instant`, {
+        local_id: local?.id,
+        visitante_id: visitante?.id
+      });
+      setInstantResult(response.data);
+      setEstado('saltado');
+    } catch (err) {
+      console.error("Error al obtener resultado:", err);
+      setEstado('finalizado');
+    }
+  };
+
+  const startLiveSimulation = () => {
+    socketInitialized.current = false;
+    setEstado('conectando');
+    setConnectTrigger(t => t + 1);
+  };
 
   useEffect(() => {
-    const socket = new WebSocket(`${WS_BASE}/match/${simId}`);
+    if (!simId || !connectTrigger || socketInitialized.current) return;
+    
+    socketInitialized.current = true;
+    
+    const timer = setTimeout(() => {
+      const socket = new WebSocket(`${WS_BASE}/match/${simId}`);
     socketRef.current = socket;
 
     socket.onopen = () => setEstado('en_vivo');
+    socket.onerror = () => {};
+    socket.onclose = () => setEstado('finalizado');
 
     socket.onmessage = (event) => {
       const msg = JSON.parse(event.data);
@@ -205,10 +241,17 @@ function MatchCenter({ onBack, matchData }) {
       if (tipo_evento === 'FINAL') setEstado('finalizado');
     };
 
-    socket.onclose = () => setEstado('finalizado');
+    }, 100);
 
-    return () => { if (socketRef.current) socketRef.current.close(); };
-  }, [local?.id]);
+    return () => {
+      clearTimeout(timer);
+      socketInitialized.current = false;
+      if (socketRef.current) {
+        socketRef.current.close();
+        socketRef.current = null;
+      }
+    };
+  }, [simId, connectTrigger]);
 
   const goalColor = lastGolIsLocal ? LOCAL_COLOR : VISIT_COLOR;
 
@@ -232,10 +275,49 @@ function MatchCenter({ onBack, matchData }) {
         <div style={{ fontFamily: 'Barlow Condensed', letterSpacing: '0.25em', fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>
           Motor de Fútbol
         </div>
-        <div style={{ width: 70 }} />
+        {(estado === 'en_vivo' || estado === 'conectando') && (
+          <button className="skip-btn" onClick={skipToResult}>
+            Saltar ⏩
+          </button>
+        )}
+        {estado === 'preparado' && <div style={{ width: 70 }} />}
+        {estado === 'finalizado' && <div style={{ width: 70 }} />}
+        {estado === 'saltado' && <div style={{ width: 70 }} />}
       </div>
 
-      {/* Scoreboard */}
+      {/* Pantalla inicial de opciones */}
+      {estado === 'preparado' && (
+        <div className="match-start-screen">
+          <div className="match-teams">
+            <div className="team-vs">
+              <TeamBadge nombre={local?.nombre} color={LOCAL_COLOR} />
+              <span className="team-name">{local?.nombre}</span>
+            </div>
+            <div className="vs-text">VS</div>
+            <div className="team-vs">
+              <TeamBadge nombre={visitante?.nombre} color={VISIT_COLOR} />
+              <span className="team-name">{visitante?.nombre}</span>
+            </div>
+          </div>
+          <div className="match-actions">
+            <button className="action-btn primary" onClick={startLiveSimulation}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+              Iniciar Retransmisión
+            </button>
+            <button className="action-btn secondary" onClick={skipToResult}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+              </svg>
+              Ver Resultado Directo
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Scoreboard - no mostrar en estado preparado */}
+      {estado !== 'preparado' && (
       <div
         className="mc-scoreboard"
         style={{ boxShadow: goalFlash ? `0 0 60px 4px ${goalColor}33` : 'none' }}
@@ -295,14 +377,17 @@ function MatchCenter({ onBack, matchData }) {
           visitNombre={visitante?.nombre}
         />
       </div>
+      )}
 
       {/* Timeline */}
+      {estado !== 'preparado' && (
       <div className="mc-timeline-wrap">
         <Timeline minutoActual={minuto} />
       </div>
+      )}
 
       {/* Event Feed */}
-      {eventos.length > 0 && (
+      {estado !== 'preparado' && eventos.length > 0 && (
         <div>
           <div className="mc-feed-title">Eventos del partido</div>
           <div
@@ -316,6 +401,59 @@ function MatchCenter({ onBack, matchData }) {
                 <div>{!ev.isLocal && <EventItem ev={ev} isLocal={false} animate={i === 0} />}</div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Vista de resultado instantáneo cuando se salta */}
+      {estado === 'saltado' && instantResult && (
+        <div className="instant-result-view">
+          <div className="mc-header">
+            <button className="back-btn-match" onClick={onBack}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Volver
+            </button>
+            <div style={{ fontFamily: 'Barlow Condensed', letterSpacing: '0.25em', fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>
+              Resultado Final
+            </div>
+            <div style={{ width: 70 }} />
+          </div>
+
+          <div className="result-scoreboard">
+            <div className="team-result">
+              <div className="team-logo">{instantResult.local.nombre}</div>
+              <div className="score">{instantResult.local.goles}</div>
+            </div>
+            <div className="score-separator">-</div>
+            <div className="team-result">
+              <div className="score">{instantResult.visitante.goles}</div>
+              <div className="team-logo">{instantResult.visitante.nombre}</div>
+            </div>
+          </div>
+
+          <div className="result-details">
+            <div className="detail-section">
+              <h3>Goleadores {instantResult.local.nombre}</h3>
+              {instantResult.local.goleadores.length > 0 ? (
+                <ul>
+                  {instantResult.local.goleadores.map((g, i) => (
+                    <li key={i}>⚽ {g.minuto}' - {g.descripcion}</li>
+                  ))}
+                </ul>
+              ) : <p style={{color: 'var(--dimmed)', fontStyle: 'italic'}}>Sin goles</p>}
+            </div>
+            <div className="detail-section">
+              <h3>Goleadores {instantResult.visitante.nombre}</h3>
+              {instantResult.visitante.goleadores.length > 0 ? (
+                <ul>
+                  {instantResult.visitante.goleadores.map((g, i) => (
+                    <li key={i}>⚽ {g.minuto}' - {g.descripcion}</li>
+                  ))}
+                </ul>
+              ) : <p style={{color: 'var(--dimmed)', fontStyle: 'italic'}}>Sin goles</p>}
+            </div>
           </div>
         </div>
       )}

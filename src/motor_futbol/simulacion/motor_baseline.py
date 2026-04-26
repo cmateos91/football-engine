@@ -655,7 +655,7 @@ def _resolver_tiro(
         minimo=0.18,
         maximo=0.65,
     )
-    if not forzar_a_puerta and generador.random() >= probabilidad_puerta:
+    if generador.random() >= probabilidad_puerta:
         # Si el tiro no va a puerta, puede ser corner (evitar recursión infinita)
         if not es_balon_parado and generador.random() < parametros.probabilidad_base_corner * 1.2:
             return eventos + _resolver_corner(

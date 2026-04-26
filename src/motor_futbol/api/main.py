@@ -1,6 +1,5 @@
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.websockets import WebSocketState
 from typing import List, Dict
 import asyncio
 import uuid
@@ -11,7 +10,7 @@ from pydantic import BaseModel
 from motor_futbol.compartido.configuracion import cargar_configuracion
 from motor_futbol.datos.repositorios import RepositorioFootballEngine
 from motor_futbol.dominio.contexto_partido import ContextoPartido
-from motor_futbol.simulacion.motor_baseline import simular_partido_iterativo
+from motor_futbol.simulacion.motor_baseline import simular_partido_iterativo, simular_partido_baseline
 from motor_futbol.simulacion.modelos import ParametrosSimulacionBaseline
 from motor_futbol.dominio.enums import TipoEventoPartido
 
@@ -115,9 +114,65 @@ async def create_match_simulation(req: MatchRequest):
     
     return {"simulation_id": sim_id, "local": local.nombre, "visitante": visitante.nombre}
 
+@app.post("/api/v1/simulations/match/instant")
+async def simulate_match_instant(req: MatchRequest):
+    local = repo.obtener_equipo_por_id(req.local_id)
+    visitante = repo.obtener_equipo_por_id(req.visitante_id)
+    
+    if not local or not visitante:
+        raise HTTPException(status_code=404, detail="Equipo no encontrado")
+    
+    ctx = ContextoPartido(
+        competicion="LaLiga",
+        temporada="2024-2025",
+        equipo_local=local,
+        equipo_visitante=visitante,
+        semilla=req.semilla or int(time.time())
+    )
+    
+    resultado = simular_partido_baseline(ctx, parametros=ParametrosSimulacionBaseline())
+    
+    eventos = resultado.estado_final.eventos
+    goleadores_local = []
+    goleadores_visitante = []
+    tarjetas_local = []
+    tarjetas_visitante = []
+    
+    for ev in eventos:
+        if ev.tipo == TipoEventoPartido.GOL:
+            if ev.equipo_id == local.id:
+                goleadores_local.append({
+                    "minuto": ev.minuto,
+                    "jugador": ev.jugador_principal_id,
+                    "descripcion": ev.descripcion
+                })
+            else:
+                goleadores_visitante.append({
+                    "minuto": ev.minuto,
+                    "jugador": ev.jugador_principal_id,
+                    "descripcion": ev.descripcion
+                })
+        elif ev.tipo == TipoEventoPartido.TARJETA_AMARILLA:
+            if ev.equipo_id == local.id:
+                tarjetas_local.append({"minuto": ev.minuto, "descripcion": ev.descripcion})
+            else:
+                tarjetas_visitante.append({"minuto": ev.minuto, "descripcion": ev.descripcion})
+        elif ev.tipo == TipoEventoPartido.TARJETA_ROJA:
+            if ev.equipo_id == local.id:
+                tarjetas_local.append({"minuto": ev.minuto, "descripcion": ev.descripcion})
+            else:
+                tarjetas_visitante.append({"minuto": ev.minuto, "descripcion": ev.descripcion})
+    
+    return {
+        "local": {"id": local.id, "nombre": local.nombre, "goles": resultado.estado_final.goles_local, "goleadores": goleadores_local, "tarjetas": tarjetas_local},
+        "visitante": {"id": visitante.id, "nombre": visitante.nombre, "goles": resultado.estado_final.goles_visitante, "goleadores": goleadores_visitante, "tarjetas": tarjetas_visitante},
+        "eventos": [{"minuto": ev.minuto, "tipo": ev.tipo.name, "descripcion": ev.descripcion, "equipo_id": ev.equipo_id} for ev in eventos if ev.tipo != TipoEventoPartido.PASE],
+    }
+
 @app.websocket("/ws/v1/match/{sim_id}")
 async def match_websocket(websocket: WebSocket, sim_id: str):
     await websocket.accept()
+    
     
     # Recuperar contexto real de la simulación
     if sim_id in simulaciones_activas:
@@ -133,6 +188,10 @@ async def match_websocket(websocket: WebSocket, sim_id: str):
             equipo_visitante=barca,
             semilla=int(time.time())
         )
+    
+    # Usar los equipos del contexto (no importa si viene de simulaciones_activas o fallback)
+    equipo_local = ctx.equipo_local
+    equipo_visitante = ctx.equipo_visitante
     
     simulador = simular_partido_iterativo(ctx, parametros=ParametrosSimulacionBaseline())
     
@@ -198,7 +257,7 @@ async def match_websocket(websocket: WebSocket, sim_id: str):
                     continue
                 
                 if estado.evento_actual.tipo == TipoEventoPartido.GOL:
-                    if estado.evento_actual.equipo_id == madrid.id:
+                    if estado.evento_actual.equipo_id == equipo_local.id:
                         marcador_local += 1
                     else:
                         marcador_visita += 1
@@ -226,14 +285,15 @@ async def match_websocket(websocket: WebSocket, sim_id: str):
                 # Velocidad de narración dinámica
                 delay = DELAYS.get(estado.evento_actual.tipo.name, DEFAULT_DELAY)
                 await asyncio.sleep(delay)
-                
     except WebSocketDisconnect:
         print(f"Client disconnected from simulation {sim_id}")
     except Exception as e:
         print(f"Error in simulation stream: {e}")
     finally:
-        if websocket.client_state is not WebSocketState.DISCONNECTED:
+        try:
             await websocket.close()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     import uvicorn
