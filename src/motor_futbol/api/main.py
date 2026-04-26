@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.websockets import WebSocketState
 from typing import List, Dict
 import asyncio
 import uuid
@@ -231,7 +232,8 @@ async def match_websocket(websocket: WebSocket, sim_id: str):
     except Exception as e:
         print(f"Error in simulation stream: {e}")
     finally:
-        await websocket.close()
+        if websocket.client_state is not WebSocketState.DISCONNECTED:
+            await websocket.close()
 
 if __name__ == "__main__":
     import uvicorn
