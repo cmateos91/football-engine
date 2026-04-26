@@ -107,3 +107,37 @@ def test_equipo_mas_fuerte_genera_mas_peligro_que_uno_debil_en_un_escenario_cont
 
     assert resultado.estadisticas_local.tiros >= resultado.estadisticas_visitante.tiros
     assert resultado.estadisticas_local.goles >= resultado.estadisticas_visitante.goles
+
+
+def test_corner_y_centro_conservan_el_mismo_lanzador() -> None:
+    contexto = crear_contexto_partido()
+    resultado = simular_partido_baseline(contexto)
+    eventos = resultado.estado_final.eventos
+
+    for indice, evento in enumerate(eventos[:-1]):
+        if evento.tipo is not TipoEventoPartido.CORNER:
+            continue
+        siguiente = eventos[indice + 1]
+        if (
+            siguiente.tipo is TipoEventoPartido.CENTRO
+            and siguiente.equipo_id == evento.equipo_id
+            and siguiente.minuto == evento.minuto
+        ):
+            assert siguiente.jugador_principal_id == evento.jugador_principal_id
+
+
+def test_penalti_se_resuelve_con_tiro_del_mismo_jugador_y_resultado() -> None:
+    contexto = crear_contexto_partido()
+    resultado = simular_partido_baseline(contexto)
+    eventos = resultado.estado_final.eventos
+
+    for indice, evento in enumerate(eventos[:-2]):
+        if evento.tipo is not TipoEventoPartido.PENALTI:
+            continue
+        tiro = eventos[indice + 1]
+        desenlace = eventos[indice + 2]
+
+        assert tiro.tipo is TipoEventoPartido.TIRO
+        assert tiro.jugador_principal_id == evento.jugador_principal_id
+        assert desenlace.tipo in (TipoEventoPartido.GOL, TipoEventoPartido.PARADA)
+        assert desenlace.minuto == evento.minuto
