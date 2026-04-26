@@ -30,7 +30,7 @@ config = cargar_configuracion()
 repo = RepositorioFootballEngine.desde_configuracion(config)
 
 # Gestor de simulaciones en memoria
-simulaciones_activas: Dict[str, asyncio.Task] = {}
+simulaciones_activas: Dict[str, ContextoPartido] = {}
 eventos_simulacion: Dict[str, list] = {}
 
 # Modelos API
@@ -110,48 +110,74 @@ async def create_match_simulation(req: MatchRequest):
         semilla=req.semilla or int(time.time())
     )
     
+    simulaciones_activas[sim_id] = ctx
     eventos_simulacion[sim_id] = []
     
-    # La tarea se ejecutará al conectar al websocket o se puede lanzar aquí
     return {"simulation_id": sim_id, "local": local.nombre, "visitante": visitante.nombre}
 
 @app.websocket("/ws/v1/match/{sim_id}")
 async def match_websocket(websocket: WebSocket, sim_id: str):
     await websocket.accept()
     
-    # Para simplificar, obtenemos los equipos de la "base de datos" de nuevo o los pasamos
-    # En un sistema real usaríamos el sim_id para recuperar el contexto persistido
-    # Por ahora simulamos un partido genérico o el usuario elige
-    # Pero necesitamos el contexto. Vamos a guardarlo.
-    
-    # TODO: Recuperar contexto real. Por ahora simulamos uno nuevo para probar el stream.
-    # Usaremos el Madrid vs Barça si no hay datos.
-    madrid = repo.obtener_equipo_por_nombre("Real Madrid")
-    barca = repo.obtener_equipo_por_nombre("FC Barcelona")
-    
-    ctx = ContextoPartido(
-        competicion="LaLiga",
-        temporada="2024-2025",
-        equipo_local=madrid,
-        equipo_visitante=barca,
-        semilla=int(time.time())
-    )
+    # Recuperar contexto real de la simulación
+    if sim_id in simulaciones_activas:
+        ctx = simulaciones_activas[sim_id]
+    else:
+        # Fallback para pruebas si no existe el sim_id
+        madrid = repo.obtener_equipo_por_nombre("Real Madrid")
+        barca = repo.obtener_equipo_por_nombre("FC Barcelona")
+        ctx = ContextoPartido(
+            competicion="LaLiga",
+            temporada="2024-2025",
+            equipo_local=madrid,
+            equipo_visitante=barca,
+            semilla=int(time.time())
+        )
     
     simulador = simular_partido_iterativo(ctx, parametros=ParametrosSimulacionBaseline())
     
+    local_id = ctx.equipo_local.id
     marcador_local = 0
     marcador_visita = 0
     posesiones_local = 0
     total_iteraciones = 0
     ultima_clave_evento: tuple[int | None, str, str] | None = None
     ultimo_minuto_por_tipo: dict[str, int] = {}
-    
+    minuto_actual = 0
+
+    DELAYS = {
+        "GOL": 4.5,
+        "TIRO": 2.2,
+        "PARADA": 2.0,
+        "TARJETA_ROJA": 3.0,
+        "TARJETA_AMARILLA": 2.0,
+        "FALTA": 1.5,
+        "INICIO": 1.5,
+        "DESCANSO": 2.0,
+        "FINAL": 3.0,
+    }
+    DEFAULT_DELAY = 1.2
+    TICK_DELAY = 0.1
     try:
         for estado in simulador:
             total_iteraciones += 1
-            if estado.posesion_equipo_id == madrid.id:
+            if estado.posesion_equipo_id == local_id:
                 posesiones_local += 1
-                
+            
+            # Sincronizar el reloj minuto a minuto
+            while minuto_actual < estado.minuto:
+                minuto_actual += 1
+                pct_local = int((posesiones_local / total_iteraciones) * 100) if total_iteraciones > 0 else 50
+                await websocket.send_json({
+                    "tipo": "TICK",
+                    "data": {
+                        "minuto": minuto_actual,
+                        "marcador": [marcador_local, marcador_visita],
+                        "posesion": [pct_local, 100 - pct_local]
+                    }
+                })
+                await asyncio.sleep(TICK_DELAY)
+
             if estado.evento_actual:
                 # Omitir pases para el feed en vivo (highlights)
                 if estado.evento_actual.tipo == TipoEventoPartido.PASE:
@@ -167,7 +193,7 @@ async def match_websocket(websocket: WebSocket, sim_id: str):
                     continue
                 if (
                     estado.evento_actual.tipo == TipoEventoPartido.RECUPERACION
-                    and estado.minuto - minuto_ultimo_tipo < 2
+                    and estado.minuto - minuto_ultimo_tipo < 3
                 ):
                     continue
                 
@@ -197,8 +223,9 @@ async def match_websocket(websocket: WebSocket, sim_id: str):
                 ultima_clave_evento = clave
                 ultimo_minuto_por_tipo[estado.evento_actual.tipo.name] = estado.minuto
                 
-                # Velocidad de narración (ajustable)
-                await asyncio.sleep(0.8)
+                # Velocidad de narración dinámica
+                delay = DELAYS.get(estado.evento_actual.tipo.name, DEFAULT_DELAY)
+                await asyncio.sleep(delay)
                 
     except WebSocketDisconnect:
         print(f"Client disconnected from simulation {sim_id}")

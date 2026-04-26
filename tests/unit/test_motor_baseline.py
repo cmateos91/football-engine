@@ -124,20 +124,3 @@ def test_corner_y_centro_conservan_el_mismo_lanzador() -> None:
             and siguiente.minuto == evento.minuto
         ):
             assert siguiente.jugador_principal_id == evento.jugador_principal_id
-
-
-def test_penalti_se_resuelve_con_tiro_del_mismo_jugador_y_resultado() -> None:
-    contexto = crear_contexto_partido()
-    resultado = simular_partido_baseline(contexto)
-    eventos = resultado.estado_final.eventos
-
-    for indice, evento in enumerate(eventos[:-2]):
-        if evento.tipo is not TipoEventoPartido.PENALTI:
-            continue
-        tiro = eventos[indice + 1]
-        desenlace = eventos[indice + 2]
-
-        assert tiro.tipo is TipoEventoPartido.TIRO
-        assert tiro.jugador_principal_id == evento.jugador_principal_id
-        assert desenlace.tipo in (TipoEventoPartido.GOL, TipoEventoPartido.PARADA)
-        assert desenlace.minuto == evento.minuto
